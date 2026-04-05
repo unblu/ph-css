@@ -1382,9 +1382,12 @@ final class CSSNodeToDomainObject
     return ret;
   }
 
-  @NonNull
+  @Nullable
   private CSSPropertyRuleDeclaration _createPropertyRuleDeclaration (@NonNull final CSSNode aNode)
   {
+    // ignore ERROR_SKIP to
+    if (ECSSNodeType.isErrorNode (aNode))
+      return null;
     _expectNodeType(aNode, ECSSNodeType.PROPERTYRULEDECLARATION);
     final int nChildCount = aNode.jjtGetNumChildren ();
     if (nChildCount != 2)
@@ -1414,10 +1417,13 @@ final class CSSNodeToDomainObject
   private CSSPropertyRule _createPropertyRule (@NonNull final CSSNode aNode)
   {
     _expectNodeType (aNode, ECSSNodeType.PROPERTYRULE);
-    final int nChildCount = aNode.jjtGetNumChildren ();
-    if (nChildCount > 3)
+    int nValidChildCount = 0;
+    for (final CSSNode aChildNode : aNode)
+      if (!ECSSNodeType.isErrorNode (aChildNode))
+        nValidChildCount++;
+    if (nValidChildCount > 3)
       _throwUnexpectedChildrenCount (aNode,
-                                     "Expected at most 3 children but got " + nChildCount + "!");
+                                     "Expected at most 3 children but got " + nValidChildCount + "!");
 
     // Get the identifier (e.g. "--canBeAnything")
     final String sIdentifier = aNode.getText ();
@@ -1426,7 +1432,12 @@ final class CSSNodeToDomainObject
     if (m_bUseSourceLocation)
       ret.setSourceLocation (aNode.getSourceLocation ());
     for (final CSSNode aChildNode : aNode)
-      ret.addPropertyRuleDeclaration (_createPropertyRuleDeclaration (aChildNode));
+    {
+      final CSSPropertyRuleDeclaration aPropertyRule = _createPropertyRuleDeclaration (aChildNode);
+      if (aPropertyRule != null) {
+        ret.addPropertyRuleDeclaration (aPropertyRule);
+      }
+    }
     return ret;
   }
 

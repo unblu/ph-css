@@ -16,6 +16,7 @@
  */
 package com.helger.css.decl;
 
+import com.helger.css.CCSS;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -155,10 +156,23 @@ public class CSSPropertyRule extends AbstractHasTopLevelRules implements ICSSTop
       aSB.append (bOptimizedOutput ? "{}" : " {}" + aSettings.getNewLineString ());
     }
     else
+      if (nMemberCount == 1)
+      {
+        // A single element
+        aSB.append (bOptimizedOutput ? "{" : " { ");
+        aSB.append (m_aDeclarations.get (0).getAsCSSString (aSettings, nIndentLevel));
+        // No ';' at the last entry
+        if (!bOptimizedOutput)
+          aSB.append (CCSS.DEFINITION_END);
+        aSB.append (bOptimizedOutput ? "}" : " }");
+      }
+    else
     {
       // At least one descriptor present
       aSB.append (bOptimizedOutput ? "{" : " {" + aSettings.getNewLineString ());
       boolean bFirst = true;
+      int nIndex = 0;
+      final int nDeclCount = m_aDeclarations.size();
       for (final CSSPropertyRuleDeclaration aDeclaration : m_aDeclarations)
       {
         final String sDescriptorCSS = aDeclaration.getAsCSSString (aSettings, nIndentLevel + 1);
@@ -173,10 +187,14 @@ public class CSSPropertyRule extends AbstractHasTopLevelRules implements ICSSTop
           if (!bOptimizedOutput)
             aSB.append (aSettings.getIndent (nIndentLevel + 1));
           aSB.append (sDescriptorCSS);
+          // No ';' at the last entry
+          if (!bOptimizedOutput || nIndex < nDeclCount - 1)
+            aSB.append (CCSS.DEFINITION_END);
         }
+        ++nIndex;
       }
       if (!bOptimizedOutput)
-        aSB.append (aSettings.getIndent (nIndentLevel));
+        aSB.append (aSettings.getNewLineString()).append (aSettings.getIndent (nIndentLevel));
       aSB.append ('}');
       if (!bOptimizedOutput)
         aSB.append (aSettings.getNewLineString ());

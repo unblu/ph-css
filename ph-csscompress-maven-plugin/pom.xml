@@ -20,11 +20,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>com.helger</groupId>
+    <groupId>unblu.patched.com.helger</groupId>
     <artifactId>ph-css-parent-pom</artifactId>
-    <version>8.1.2-SNAPSHOT</version>
+    <version>8.1.2-unblu-1</version>
   </parent>
-  <groupId>com.helger.maven</groupId>
   <artifactId>ph-csscompress-maven-plugin</artifactId>
   <packaging>maven-plugin</packaging>
   <name>ph-csscompress-maven-plugin</name>
@@ -74,8 +73,9 @@
     </dependency>
     
     <dependency>
-      <groupId>com.helger</groupId>
+      <groupId>unblu.patched.com.helger</groupId>
       <artifactId>ph-css</artifactId>
+      <version>8.1.2-unblu-1</version>
     </dependency>
 
     <dependency>

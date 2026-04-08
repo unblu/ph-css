@@ -132,6 +132,9 @@ TOKEN :
   < SYNTAX_SYM: "syntax" >
 | < INHERITS_SYM: "inherits" >
 | < INITIALVALUE_SYM: "initial-value" >
+| < DASHED_IDENT: "--"
+                  <NMSTART>
+                  ( <NMCHAR> )* > { matchedToken.image = CSSParseHelper.validateIdentifier(image); }
 }
 
 <DEFAULT, IN_PROPERTY_RULE, IN_UNKNOWN_RULE>
@@ -219,6 +222,7 @@ TOKEN :
 | < GREATER: ">" >
 | < TILDE: "~" >
 | < DOLLAR: "$" >
+| < AMPERSAND: "&" >
 | < HASH: "#" <NAME> >
 | < INCLUDES: "~=" >
 | < DASHMATCH: "|=" >
@@ -564,7 +568,7 @@ private void browserCompliantSkipDecl(final ParseException ex) throws ParseEOFEx
   // push back last token (char count!!)
   token_source.backup(1);
   if (m_aCustomErrorHandler != null)
-    m_aCustomErrorHandler.onCSSBrowserCompliantSkip (ex, ex.currentToken != null ? ex.currentToken : token, token);
+    m_aCustomErrorHandler.onCSSBrowserCompliantSkip (ex, ex.currentToken, token);
 }
 
 //
@@ -941,6 +945,11 @@ void typeSelector() #void : {}
   elementName()
 }
 
+void nestingSelector() #Nesting : {}
+{
+  <AMPERSAND> { jjtThis.setText ("&"); }
+}
+
 void idSelector() : {}
 {
   <HASH> { jjtThis.setText (token.image); }
@@ -1061,6 +1070,11 @@ void relativeSelector() : {}
   selector ()
 }
 
+void selectorOrRelativeSelector() #void : {}
+{
+  ( LOOKAHEAD( selectorCombinator() ) relativeSelector() | selector() )
+}
+
 void relativeSelectorList() #void : {}
 {
   ( <S> )*
@@ -1159,6 +1173,7 @@ void simpleSelectorSequence() #void : {}
     ( idSelector()
     | classSelector()
     | attributeSelector()
+    | nestingSelector()
     | pseudoClassSelector()
     | funcNot()
     )*
@@ -1166,6 +1181,7 @@ void simpleSelectorSequence() #void : {}
   | ( idSelector()
     | classSelector()
     | attributeSelector()
+    | nestingSelector()
     | pseudoClassSelector()
     | funcNot()
     )+
@@ -1261,6 +1277,28 @@ void styleDeclarationOrRule() #void : {}
   )
 }
 
+void styleDeclarationOrRuleWithNested() #void : {}
+{
+  ( LOOKAHEAD( property() <COLON> ) styleDeclaration() ( LOOKAHEAD( (<S>)* (<RBRACE> | <EOF>) ) (<S>)* | (<S>)* <SEMICOLON> (<S>)* )
+  | <SEMICOLON> (<S>)* // final semicolon from single line comment
+  | ( styleRule()
+    | mediaRule()     { }
+    | pageRule()      { errorUnexpectedRule ("@page", "page rule is not allowed as a nested rule!"); }
+    | fontfaceRule()  { errorUnexpectedRule ("@font-face", "font-face rule is not allowed as a nested rule!"); }
+    | keyframesRule() { errorUnexpectedRule ("@keyframes", "keyframes rule is not allowed as a nested rule!"); }
+    | viewportRule()  { errorUnexpectedRule ("@viewport", "viewport rule is not allowed as a nested rule!"); }
+    | supportsRule()  { }
+    | propertyRule()  { errorUnexpectedRule ("@property", "property rule is not allowed as a nested rule!"); }
+    | unknownRule()   { }
+    | charsetRule()   { errorUnexpectedRule ("@charset", "charset rule is not allowed as a nested rule!"); }
+    | importRule()    { errorUnexpectedRule ("@import", "import rule is not allowed as a nested rule!"); }
+    | namespaceRule() { errorUnexpectedRule ("@namespace", "namespace rule is not allowed as a nested rule!"); }
+    | layerRule()     { }
+    )
+    ( <S> | <CDO> | <CDC> )*
+  )
+}
+
 CSSNode styleDeclarationList() : {}
 {
 try {
@@ -1281,11 +1319,41 @@ try {
   { return jjtThis; }
 }
 
+CSSNode styleDeclarationListWithNested() : {}
+{
+try {
+  ( <S> )*
+  ( styleDeclarationOrRuleWithNested() )*
+} catch (/*final*/ ParseException ex) {
+  if (m_bBrowserCompliantMode)
+    browserCompliantSkipDecl (ex);
+  else {
+    errorSkipTo (ex, RBRACE);
+    token_source.backup(1);
+  }
+}
+  { return jjtThis; }
+}
+
 void styleDeclarationBlock() #void : {}
 {
   <LBRACE>
 try {
   styleDeclarationList()
+  <RBRACE>
+} catch (/*final*/ ParseException ex) {
+  if (m_bBrowserCompliantMode)
+    browserCompliantSkipDecl (ex);
+  else
+    errorSkipTo (ex, RBRACE);
+}
+}
+
+void styleDeclarationBlockWithNested() #void : {}
+{
+  <LBRACE>
+try {
+  styleDeclarationListWithNested()
   <RBRACE>
 } catch (/*final*/ ParseException ex) {
   if (m_bBrowserCompliantMode)
@@ -1298,14 +1366,14 @@ try {
 void styleRule() : {}
 {
 try{
-  selector ()
+  selectorOrRelativeSelector ()
   ( <S> )*
   ( <COMMA>
     ( <S> )*
-    selector()
+    selectorOrRelativeSelector()
     ( <S> )*
   )*
-  styleDeclarationBlock()
+  styleDeclarationBlockWithNested()
 } catch (/*final*/ ParseException ex) {
   if (m_bBrowserCompliantMode)
     browserCompliantSkipInSelector (ex);
@@ -1763,15 +1831,24 @@ void propertyRuleExpression() #void : {}
 }
 
 void propertyRuleInvalidDeclaration() #void :
-{ Token aPrefixToken; }
+{ Token prevToken = token; }
 {
 try {
   ( <IDENT>
   | LOOKAHEAD(( <ASTERISK> | <DOLLAR> ) <IDENT> )
-    ( <ASTERISK> | <DOLLAR> ) { aPrefixToken = token; }
-    <IDENT> { token.image = aPrefixToken.image + token.image; }
+    ( <ASTERISK> | <DOLLAR> ) { prevToken = token; }
+    <IDENT>
   )
-  { throw new ParseException ("Invalid descriptor '" + token.image + "'"); }
+  {
+    throw new ParseException (prevToken,
+                              new int[][] {
+                                new int[] { SYNTAX_SYM },
+                                new int[] { INHERITS_SYM },
+                                new int[] { INITIALVALUE_SYM }
+                              },
+                              tokenImage,
+                              token_source == null ? null : ParserCSS30TokenManager.lexStateNames[token_source.curLexState]);
+  }
 } catch (/*final*/ ParseException ex) {
   if (m_bBrowserCompliantMode)
     browserCompliantSkipDecl (ex);
@@ -1811,14 +1888,12 @@ CSSNode propertyRuleDeclarationList() : {}
 {
 try {
   ( <S> )*
-  ( (propertyRuleDeclarationOrInvalid() )
-    (
-      <SEMICOLON>
-      ( <S> )*
-      ( propertyRuleDeclarationOrInvalid() )?
-    )*
-  )?
-  ( <S> )*
+  ( propertyRuleDeclarationOrInvalid() )?
+  (
+    <SEMICOLON>
+    ( <S> )*
+    ( propertyRuleDeclarationOrInvalid() )?
+  )*
 } catch (/*final*/ ParseException ex) {
   if (m_bBrowserCompliantMode)
     browserCompliantSkipDecl (ex);
@@ -1834,12 +1909,7 @@ void propertyRule() : {}
 {
   <PROPERTY_SYM>
   ( <S> )*
-  <IDENT> 
-  { 
-    if (!token.image.startsWith ("--"))
-      throw new ParseException ("Invalid identifier '" + token.image + "'. Only dashed identifier allowed (e.g. '--canBeAnything').");
-    jjtThis.setText (token.image);
-  }
+  <DASHED_IDENT> { jjtThis.setText (token.image); }
   ( <S> )*
   <LBRACE>
 try {

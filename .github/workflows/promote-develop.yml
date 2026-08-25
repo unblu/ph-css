@@ -1,0 +1,61 @@
+name: Promote develop to master
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - develop
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    if: github.event.pull_request.merged == true
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create promotion PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTING_PR=$(gh pr list \
+            --base master \
+            --head develop \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Promotion PR #$EXISTING_PR already exists."
+            exit 0
+          fi
+
+          gh pr create \
+            --base master \
+            --head develop \
+            --title "Promote develop to master" \
+            --body "Automatic promotion of develop to master after PR #${{ github.event.pull_request.number }} was merged."
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh pr list \
+            --base master \
+            --head develop \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$PR" ]; then
+            echo "No promotion PR found."
+            exit 1
+          fi
+
+          gh pr merge "$PR" \
+            --auto \
+            --squash

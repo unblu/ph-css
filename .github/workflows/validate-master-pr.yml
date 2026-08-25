@@ -1,0 +1,22 @@
+name: Validate master PR
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  validate-source:
+    name: Validate master source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require develop as source branch
+        run: |
+          if [ "${{ github.head_ref }}" != "develop" ]; then
+            echo "ERROR: Pull requests into master must come from develop."
+            echo "Source branch: ${{ github.head_ref }}"
+            exit 1
+          fi
+
+          echo "Valid: develop -> master"

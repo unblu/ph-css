@@ -3,6 +3,8 @@
 <!-- ph-badge-start -->
 [![Sonatype Central](https://maven-badges.sml.io/sonatype-central/com.helger/ph-css-parent-pom/badge.svg)](https://maven-badges.sml.io/sonatype-central/com.helger/ph-css-parent-pom/)
 [![javadoc](https://javadoc.io/badge2/com.helger/ph-css/javadoc.svg)](https://javadoc.io/doc/com.helger/ph-css)
+
+> If this project saved you some time or made your day a little easier, a star would mean a lot — it helps others find it too.
 <!-- ph-badge-end -->
 
 Java-based CSS 3 parser and builder.
@@ -165,6 +167,16 @@ In the above example, `aSplittedDecls` will contain 3 elements with the followin
 
 Even though no color value was provided, the default value `black` is returned. For all "sub-declarations", sensible default values are defined.
 
+### Box-model shorthand compaction (optimized output)
+
+Since v8.2.1, the box-model shorthand properties (`margin`, `padding`, `border-width`, `border-style`, `border-color`) collapse redundant values when the writer runs with `setOptimizedOutput(true)`. Formatted output is unchanged. The compaction follows the standard CSS rules for 1/2/3/4-value notation:
+
+* `padding: 10px 10px 10px 10px` &rarr; `padding:10px`
+* `margin: 10px 20px 10px 20px` &rarr; `margin:10px 20px`
+* `border-color: red green blue green` &rarr; `border-color:red green blue`
+
+The hook is generic: any descriptor registered in `CSSShortHandRegistry` can override `CSSShortHandDescriptor.getOptimizedExpression` to participate in optimized-write rewriting.
+
 ## CSS utilities
 
 ph-css contains a multitude of small utility class covering different aspects of CSS
@@ -316,7 +328,14 @@ Configuration items are:
 
 ## News and noteworthy
 
-v8.2.0 - work in progress
+v8.2.1 - 2026-05-16
+* Optimized output now compacts the box-model shorthand properties (`margin`, `padding`, `border-width`, `border-style`, `border-color`) so that e.g. `padding:10px 10px 10px 10px` is written as `padding:10px`. See [#126](https://github.com/phax/ph-css/issues/126) - thx @cjohansen
+    * New extension point `CSSShortHandDescriptor.getOptimizedExpression` for descriptors that want to rewrite their expression on optimized write
+    * Formatted (non-optimized) output is unchanged
+
+v8.2.0 - 2026-04-27
+* Updated to ph-commons 12.2.0
+* Removed OSGI bundling
 * Added support for CSS Nesting (CSS Nesting Module Level 1). See [#94](https://github.com/phax/ph-css/issues/94) and [#123](https://github.com/phax/ph-css/pull/123) - thx @blutorange
     * New interface `ICSSNestedRule` as a marker for all nested CSS elements
     * New interface `IHasCSSNestedRules` for managing nested rules
@@ -324,6 +343,10 @@ v8.2.0 - work in progress
     * Added support for relative selectors in nested style rules
     * Updated `CSSVisitor` and `ICSSVisitor` with `onBeginNestedDeclarations`/`onEndNestedDeclarations` callbacks
     * Updated the CSS 3.0 grammar to support nested rules and the nesting selector (`&`)
+* Added support for the CSS `@property` rule. See [#121](https://github.com/phax/ph-css/issues/121) and [#122](https://github.com/phax/ph-css/pull/122) - thx @shagkur and @blutorange
+    * New class `CSSPropertyRule` representing an `@property` at-rule with its descriptors
+    * Invalid descriptors are silently dropped during parsing
+* Allow bare identifiers as values inside `calc()`. This fixes parsing of CSS Color Module 5 relative-color syntax such as `oklch(from var(--c) 0.18 calc(c * 0.3) h)`. See [#125](https://github.com/phax/ph-css/issues/125) - thx @Artur-
 
 v8.1.1 - 2025-12-09
 * Added new CSS units `dvw` and `dvh`. See [#118](https://github.com/phax/ph-css/pull/118) - thx @shagkur

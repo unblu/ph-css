@@ -69,6 +69,8 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
   public static final boolean DEFAULT_WRITE_VIEWPORT_RULES = true;
   /** By default, supports rules are written */
   public static final boolean DEFAULT_WRITE_SUPPORTS_RULES = true;
+  /** By default, property rules are written */
+  public static final boolean DEFAULT_WRITE_PROPERTY_RULES = true;
   /** By default, unknown rules are written */
   public static final boolean DEFAULT_WRITE_UNKNOWN_RULES = true;
 
@@ -94,6 +96,7 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
   private boolean m_bWritePageRules = DEFAULT_WRITE_PAGE_RULES;
   private boolean m_bWriteViewportRules = DEFAULT_WRITE_VIEWPORT_RULES;
   private boolean m_bWriteSupportsRules = DEFAULT_WRITE_SUPPORTS_RULES;
+  private boolean m_bWritePropertyRules = DEFAULT_WRITE_PROPERTY_RULES;
   private boolean m_bWriteUnknownRules = DEFAULT_WRITE_UNKNOWN_RULES;
 
   /**
@@ -137,6 +140,7 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
     setWritePageRules (aBase.isWritePageRules ());
     setWriteViewportRules (aBase.isWriteViewportRules ());
     setWriteSupportsRules (aBase.isWriteSupportsRules ());
+    setWritePropertyRules (aBase.isWritePropertyRules ());
     setWriteUnknownRules (aBase.isWriteUnknownRules ());
   }
 
@@ -223,19 +227,21 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
     return this;
   }
 
-  public final boolean isWriteNestedDeclarations()
+  public final boolean isWriteNestedDeclarations ()
   {
     return m_bWriteNestedDeclarations;
   }
 
   /**
    * Configures whether {@link CSSNestedDeclarations nested declarations} are written.
-   * @param bWriteNestedDeclarations <code>true</code> to write nested declarations, <code>false</code> to ignore them.
+   * 
+   * @param bWriteNestedDeclarations
+   *        <code>true</code> to write nested declarations, <code>false</code> to ignore them.
    * @return This instance for chaining
    * @since 8.2.0
    */
   @NonNull
-  public final CSSWriterSettings setWriteNestedDeclarations(final boolean bWriteNestedDeclarations)
+  public final CSSWriterSettings setWriteNestedDeclarations (final boolean bWriteNestedDeclarations)
   {
     m_bWriteNestedDeclarations = bWriteNestedDeclarations;
     return this;
@@ -272,15 +278,17 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
 
   /**
    * Configures whether {@link CSSLayerRule @layer rules} are written.
-   * @param bWriteLayerRules <code>true</code> to write layer rules, <code>false</code> to ignore them.
+   * 
+   * @param bWriteLayerRules
+   *        <code>true</code> to write layer rules, <code>false</code> to ignore them.
    * @return This instance for chaining
    * @since 8.2.0
    */
   @NonNull
   public final CSSWriterSettings setWriteLayerRules (final boolean bWriteLayerRules)
   {
-      m_bWriteLayerRules = bWriteLayerRules;
-      return this;
+    m_bWriteLayerRules = bWriteLayerRules;
+    return this;
   }
 
   public final boolean isWriteMediaRules ()
@@ -331,6 +339,18 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
     return this;
   }
 
+  public final boolean isWritePropertyRules ()
+  {
+    return m_bWritePropertyRules;
+  }
+
+  @NonNull
+  public final CSSWriterSettings setWritePropertyRules (final boolean bWritePropertyRules)
+  {
+    m_bWritePropertyRules = bWritePropertyRules;
+    return this;
+  }
+
   public final boolean isWriteUnknownRules ()
   {
     return m_bWriteUnknownRules;
@@ -372,6 +392,7 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
            m_bWritePageRules == rhs.m_bWritePageRules &&
            m_bWriteViewportRules == rhs.m_bWriteViewportRules &&
            m_bWriteSupportsRules == rhs.m_bWriteSupportsRules &&
+           m_bWritePropertyRules == rhs.m_bWritePropertyRules &&
            m_bWriteUnknownRules == rhs.m_bWriteUnknownRules;
   }
 
@@ -392,6 +413,7 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
                                        .append (m_bWritePageRules)
                                        .append (m_bWriteViewportRules)
                                        .append (m_bWriteSupportsRules)
+                                       .append (m_bWritePropertyRules)
                                        .append (m_bWriteUnknownRules)
                                        .getHashCode ();
   }
@@ -413,6 +435,7 @@ public class CSSWriterSettings implements ICSSWriterSettings, ICloneable <CSSWri
                                        .append ("WritePageRules", m_bWritePageRules)
                                        .append ("WriteViewportRules", m_bWriteViewportRules)
                                        .append ("WriteSupportsRules", m_bWriteSupportsRules)
+                                       .append ("WritePropertyRules", m_bWritePropertyRules)
                                        .append ("WriteUnknownRules", m_bWriteUnknownRules)
                                        .getToString ();
   }

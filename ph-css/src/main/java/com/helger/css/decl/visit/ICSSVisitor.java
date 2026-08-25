@@ -32,6 +32,8 @@ import com.helger.css.decl.CSSPageRule;
 import com.helger.css.decl.CSSSelector;
 import com.helger.css.decl.CSSStyleRule;
 import com.helger.css.decl.CSSSupportsRule;
+import com.helger.css.decl.CSSPropertyRule;
+import com.helger.css.decl.CSSPropertyRuleDeclaration;
 import com.helger.css.decl.CSSUnknownRule;
 import com.helger.css.decl.CSSViewportRule;
 
@@ -45,8 +47,8 @@ public interface ICSSVisitor
 {
   /**
    * Before visiting starts.<br>
-   * Note: This is only called for complete style sheets, and not when starting
-   * e.g. with a declaration list!
+   * Note: This is only called for complete style sheets, and not when starting e.g. with a
+   * declaration list!
    */
   void begin ();
 
@@ -74,11 +76,12 @@ public interface ICSSVisitor
    */
   void onDeclaration (@NonNull CSSDeclaration aDeclaration);
 
+  void onPropertyRuleDeclaration (@NonNull CSSPropertyRuleDeclaration aDeclaration);
+
   // style rules:
   /**
    * Called when a style rule starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}
    *
    * @param aStyleRule
    *        The style rule. Never <code>null</code>.
@@ -104,9 +107,8 @@ public interface ICSSVisitor
   // page rules:
   /**
    * Called when a page rule starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}, contained page margin blocks are
-   * handled with {@link #onBeginPageMarginBlock(CSSPageMarginBlock)} and
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}, contained
+   * page margin blocks are handled with {@link #onBeginPageMarginBlock(CSSPageMarginBlock)} and
    * {@link #onEndPageMarginBlock(CSSPageMarginBlock)}.
    *
    * @param aPageRule
@@ -116,8 +118,7 @@ public interface ICSSVisitor
 
   /**
    * Called when a page margin block starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}
    *
    * @param aPageMarginBlock
    *        The page margin block. Never <code>null</code>.
@@ -143,8 +144,7 @@ public interface ICSSVisitor
   // font face rules:
   /**
    * Called when a font-face rule starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}
    *
    * @param aFontFaceRule
    *        The font-face rule. Never <code>null</code>.
@@ -162,8 +162,7 @@ public interface ICSSVisitor
   // media rules:
   /**
    * Called when a media rule starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}
    *
    * @param aMediaRule
    *        The media rule. Never <code>null</code>.
@@ -181,8 +180,7 @@ public interface ICSSVisitor
   // keyframes rules:
   /**
    * Called when a keyframes rule starts.<br>
-   * Note: contained declarations are handled by
-   * {@link #onDeclaration(CSSDeclaration)}
+   * Note: contained declarations are handled by {@link #onDeclaration(CSSDeclaration)}
    *
    * @param aKeyframesRule
    *        The keyframes rule. Never <code>null</code>.
@@ -263,8 +261,26 @@ public interface ICSSVisitor
    */
   void onEndLayerRule (@NonNull CSSLayerRule aLayerRule);
 
+  // property rules
+  /**
+   * Called when a property rule starts.
+   *
+   * @param aPropertyRule
+   *        The property rule. Never <code>null</code>.
+   */
+  void onBeginPropertyRule (@NonNull CSSPropertyRule aPropertyRule);
+
+  /**
+   * Called when a property rule ends.
+   *
+   * @param aPropertyRule
+   *        The property rule. Never <code>null</code>.
+   */
+  void onEndPropertyRule (@NonNull CSSPropertyRule aPropertyRule);
+
   /**
    * Called when a nested declarations rule starts.
+   * 
    * @param aNestedDeclarations
    *        The nested declarations. Never <code>null</code>.
    */
@@ -289,8 +305,8 @@ public interface ICSSVisitor
 
   /**
    * After visiting is done.<br>
-   * Note: This is only called for complete style sheets, and not when starting
-   * e.g. with a declaration list!
+   * Note: This is only called for complete style sheets, and not when starting e.g. with a
+   * declaration list!
    */
   void end ();
 }

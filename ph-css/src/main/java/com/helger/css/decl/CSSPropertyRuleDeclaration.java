@@ -16,92 +16,76 @@
  */
 package com.helger.css.decl;
 
+import java.util.Locale;
+
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import com.helger.annotation.Nonempty;
 import com.helger.annotation.Nonnegative;
-import com.helger.annotation.concurrent.NotThreadSafe;
+import com.helger.annotation.style.ReturnsMutableObject;
 import com.helger.base.enforce.ValueEnforcer;
 import com.helger.base.hashcode.HashCodeGenerator;
 import com.helger.base.tostring.ToStringGenerator;
+import com.helger.css.CCSS;
 import com.helger.css.CSSSourceLocation;
 import com.helger.css.ICSSSourceLocationAware;
+import com.helger.css.ICSSWriteable;
 import com.helger.css.ICSSWriterSettings;
 
-/**
- * Represents a single CSS selector like an element name, a hash value (ID), a class or a pseudo
- * class.
- *
- * @author Philip Helger
- */
-@NotThreadSafe
-public class CSSSelectorSimpleMember implements ICSSSelectorMember, ICSSSourceLocationAware
+public class CSSPropertyRuleDeclaration implements ICSSSourceLocationAware, ICSSWriteable
 {
-  private final String m_sValue;
+  private String m_sDescriptor;
+  private CSSExpression m_aExpression;
   private CSSSourceLocation m_aSourceLocation;
 
-  public CSSSelectorSimpleMember (@NonNull @Nonempty final String sValue)
+  public CSSPropertyRuleDeclaration (@NonNull @Nonempty final String sDescriptor,
+                                     @NonNull final CSSExpression aExpression)
   {
-    ValueEnforcer.notEmpty (sValue, "Value");
-    m_sValue = sValue;
+    setDescriptor (sDescriptor);
+    setExpression (aExpression);
   }
 
   @NonNull
   @Nonempty
-  public String getValue ()
+  public final String getDescriptor ()
   {
-    return m_sValue;
+    return m_sDescriptor;
   }
 
-  /**
-   * @return <code>true</code> if it is no hash, no class, no pseudo, and no nesting selector
-   */
-  public boolean isElementName ()
+  @NonNull
+  public final CSSPropertyRuleDeclaration setDescriptor (@NonNull @Nonempty final String sDescriptor)
   {
-    return !isHash () && !isClass () && !isPseudo () && !isNesting ();
+    ValueEnforcer.notEmpty (sDescriptor, "Descriptor");
+    m_sDescriptor = sDescriptor.toLowerCase (Locale.ROOT);
+    return this;
   }
 
-  /**
-   * @return <code>true</code> if it is a hash selector
-   */
-  public boolean isHash ()
+  @NonNull
+  @ReturnsMutableObject
+  public final CSSExpression getExpression ()
   {
-    return m_sValue.charAt (0) == '#';
+    return m_aExpression;
   }
 
-  /**
-   * @return <code>true</code> if it is a class selector
-   */
-  public boolean isClass ()
+  @NonNull
+  public final String getExpressionAsCSSString ()
   {
-    return m_sValue.charAt (0) == '.';
+    return m_aExpression.getAsCSSString ();
   }
 
-  /**
-   * @return <code>true</code> if it is a pseudo selector
-   */
-  public boolean isPseudo ()
+  @NonNull
+  public final CSSPropertyRuleDeclaration setExpression (@NonNull final CSSExpression aExpression)
   {
-    return m_sValue.charAt (0) == ':';
-  }
-
-  /**
-   * Checks if this selector represents the nesting selector <code>&amp;</code>.
-   *
-   * @return <code>true</code> if it is a nesting selector
-   * @since 8.2.0
-   */
-  public boolean isNesting ()
-  {
-    return m_sValue.charAt (0) == '&';
+    m_aExpression = ValueEnforcer.notNull (aExpression, "Expression");
+    return this;
   }
 
   @NonNull
   @Nonempty
   public String getAsCSSString (@NonNull final ICSSWriterSettings aSettings, @Nonnegative final int nIndentLevel)
   {
-    return m_sValue;
+    return m_sDescriptor + CCSS.SEPARATOR_PROPERTY_VALUE + m_aExpression.getAsCSSString (aSettings, nIndentLevel);
   }
 
   @Nullable
@@ -122,20 +106,21 @@ public class CSSSelectorSimpleMember implements ICSSSelectorMember, ICSSSourceLo
       return true;
     if (o == null || !getClass ().equals (o.getClass ()))
       return false;
-    final CSSSelectorSimpleMember rhs = (CSSSelectorSimpleMember) o;
-    return m_sValue.equals (rhs.m_sValue);
+    final CSSPropertyRuleDeclaration rhs = (CSSPropertyRuleDeclaration) o;
+    return m_sDescriptor.equals (rhs.m_sDescriptor) && m_aExpression.equals (rhs.m_aExpression);
   }
 
   @Override
   public int hashCode ()
   {
-    return new HashCodeGenerator (this).append (m_sValue).getHashCode ();
+    return new HashCodeGenerator (this).append (m_sDescriptor).append (m_aExpression).getHashCode ();
   }
 
   @Override
   public String toString ()
   {
-    return new ToStringGenerator (null).append ("value", m_sValue)
+    return new ToStringGenerator (this).append ("descriptor", m_sDescriptor)
+                                       .append ("expression", m_aExpression)
                                        .appendIfNotNull ("SourceLocation", m_aSourceLocation)
                                        .getToString ();
   }

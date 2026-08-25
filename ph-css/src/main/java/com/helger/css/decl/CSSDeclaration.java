@@ -32,11 +32,13 @@ import com.helger.css.CCSS;
 import com.helger.css.CSSSourceLocation;
 import com.helger.css.ICSSSourceLocationAware;
 import com.helger.css.ICSSWriterSettings;
+import com.helger.css.decl.shorthand.CSSShortHandDescriptor;
+import com.helger.css.decl.shorthand.CSSShortHandRegistry;
 import com.helger.css.property.ECSSProperty;
 
 /**
- * Represents a single element in a CSS style rule. (e.g. <code>color:red;</code>
- * or <code>background:uri(a.gif) !important;</code>)<br>
+ * Represents a single element in a CSS style rule. (e.g. <code>color:red;</code> or
+ * <code>background:uri(a.gif) !important;</code>)<br>
  * Instances of this class are mutable since 3.7.4.
  *
  * @author Philip Helger
@@ -55,9 +57,8 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
    * Constructor for non-important values.
    *
    * @param sProperty
-   *        The name of the property. E.g. "color". May neither be
-   *        <code>null</code> nor empty. The property value is automatically
-   *        lowercased!
+   *        The name of the property. E.g. "color". May neither be <code>null</code> nor empty. The
+   *        property value is automatically lowercased!
    * @param aExpression
    *        The value of the property. May not be <code>null</code>.
    */
@@ -70,15 +71,16 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
    * Constructor.
    *
    * @param sProperty
-   *        The name of the property. E.g. "color". May neither be
-   *        <code>null</code> nor empty. The property value is automatically
-   *        lowercased!
+   *        The name of the property. E.g. "color". May neither be <code>null</code> nor empty. The
+   *        property value is automatically lowercased!
    * @param aExpression
    *        The value of the property. May not be <code>null</code>.
    * @param bIsImportant
    *        <code>true</code> if it is important, <code>false</code> if not.
    */
-  public CSSDeclaration (@NonNull @Nonempty final String sProperty, @NonNull final CSSExpression aExpression, final boolean bIsImportant)
+  public CSSDeclaration (@NonNull @Nonempty final String sProperty,
+                         @NonNull final CSSExpression aExpression,
+                         final boolean bIsImportant)
   {
     setProperty (sProperty);
     setExpression (aExpression);
@@ -86,8 +88,8 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   }
 
   /**
-   * @return The property of this declaration (e.g. "color" or "margin-top").
-   *         The string is always lowercase. Never <code>null</code>.
+   * @return The property of this declaration (e.g. "color" or "margin-top"). The string is always
+   *         lowercase. Never <code>null</code>.
    */
   @NonNull
   @Nonempty
@@ -106,8 +108,7 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   }
 
   /**
-   * Check if this declaration has the specified property. The comparison is
-   * case-insensitive!
+   * Check if this declaration has the specified property. The comparison is case-insensitive!
    *
    * @param sProperty
    *        The property to check. May not be <code>null</code>.
@@ -122,8 +123,7 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   }
 
   /**
-   * Check if this declaration has the specified property. The comparison is
-   * case-insensitive!
+   * Check if this declaration has the specified property. The comparison is case-insensitive!
    *
    * @param eProperty
    *        The property to check. May not be <code>null</code>.
@@ -141,8 +141,8 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
    * Set the property of this CSS value (e.g. <code>background-color</code>).
    *
    * @param sProperty
-   *        The CSS property name to set. May neither be <code>null</code> nor
-   *        empty. The property value is automatically lowercased!
+   *        The CSS property name to set. May neither be <code>null</code> nor empty. The property
+   *        value is automatically lowercased!
    * @return this
    * @since 3.7.4
    */
@@ -170,8 +170,8 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   }
 
   /**
-   * @return The expression of this declaration (e.g. "red" or "25px" or "25px
-   *         10px 25px 9px") as a structured value. Never <code>null</code>.
+   * @return The expression of this declaration (e.g. "red" or "25px" or "25px 10px 25px 9px") as a
+   *         structured value. Never <code>null</code>.
    */
   @NonNull
   @ReturnsMutableObject
@@ -207,8 +207,8 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   }
 
   /**
-   * @return <code>true</code> if this declaration is important (
-   *         <code>!important</code>) or <code>false</code> if not.
+   * @return <code>true</code> if this declaration is important ( <code>!important</code>) or
+   *         <code>false</code> if not.
    */
   public final boolean isImportant ()
   {
@@ -219,8 +219,7 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
    * Set the important flag of this value.
    *
    * @param bIsImportant
-   *        <code>true</code> to mark it important, <code>false</code> to remove
-   *        it.
+   *        <code>true</code> to mark it important, <code>false</code> to remove it.
    * @return this
    * @since 3.7.4
    */
@@ -235,9 +234,22 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
   @Nonempty
   public String getAsCSSString (@NonNull final ICSSWriterSettings aSettings, @Nonnegative final int nIndentLevel)
   {
+    CSSExpression aExpression = m_aExpression;
+    if (aSettings.isOptimizedOutput ())
+    {
+      // Allow registered short hand descriptors to provide an optimized (e.g. compacted)
+      // expression representation. Only kicks in for optimized output.
+      final ECSSProperty eProperty = ECSSProperty.getFromNameOrNull (m_sProperty);
+      if (eProperty != null)
+      {
+        final CSSShortHandDescriptor aDescriptor = CSSShortHandRegistry.getShortHandDescriptor (eProperty);
+        if (aDescriptor != null)
+          aExpression = aDescriptor.getOptimizedExpression (m_aExpression, aSettings);
+      }
+    }
     return m_sProperty +
            CCSS.SEPARATOR_PROPERTY_VALUE +
-           m_aExpression.getAsCSSString (aSettings, nIndentLevel) +
+           aExpression.getAsCSSString (aSettings, nIndentLevel) +
            (m_bIsImportant ? CCSS.IMPORTANT_SUFFIX : "");
   }
 
@@ -260,13 +272,18 @@ public class CSSDeclaration implements ICSSSourceLocationAware, ICSSPageRuleMemb
     if (o == null || !getClass ().equals (o.getClass ()))
       return false;
     final CSSDeclaration rhs = (CSSDeclaration) o;
-    return m_sProperty.equals (rhs.m_sProperty) && m_aExpression.equals (rhs.m_aExpression) && m_bIsImportant == rhs.m_bIsImportant;
+    return m_sProperty.equals (rhs.m_sProperty) &&
+           m_aExpression.equals (rhs.m_aExpression) &&
+           m_bIsImportant == rhs.m_bIsImportant;
   }
 
   @Override
   public int hashCode ()
   {
-    return new HashCodeGenerator (this).append (m_sProperty).append (m_aExpression).append (m_bIsImportant).getHashCode ();
+    return new HashCodeGenerator (this).append (m_sProperty)
+                                       .append (m_aExpression)
+                                       .append (m_bIsImportant)
+                                       .getHashCode ();
   }
 
   @Override

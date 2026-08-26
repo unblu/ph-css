@@ -93,10 +93,7 @@ jobs:
           git restore \
             --source="upstream/${TARGET_BRANCH}" \
             -- \
-            .github/workflows/promote-to-upstream.yml \
-            .github/workflows/promote-develop.yml \
-            .github/workflows/validate-master-pr.yml \
-            .github/workflows/sync-upstream.yml
+            .github/workflows/
 
       # ------------------------------------------------------------
       # 7. Commit promotion branch

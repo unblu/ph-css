@@ -3,9 +3,12 @@ name: Promote develop to master
 on:
   pull_request:
     types:
+      - opened
+      - reopened
       - closed
     branches:
       - develop
+      - master
 
 permissions:
   contents: write
@@ -13,32 +16,84 @@ permissions:
 
 jobs:
   promote:
-    if: github.event.pull_request.merged == true
+    if: >
+      (
+        github.event.pull_request.base.ref == 'develop' &&
+        github.event.pull_request.merged == true
+      )
+      ||
+      (
+        github.event.pull_request.base.ref == 'master' &&
+        github.event.pull_request.head.ref == 'develop' &&
+        (
+          github.event.action == 'opened' ||
+          github.event.action == 'reopened'
+        )
+      )
 
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch branches
+        run: |
+          git fetch origin master
+          git fetch origin develop
+
+      - name: Create promotion branch
+        run: |
+          git checkout -B promotion/develop-to-master origin/master
+          git merge origin/develop --no-edit
+
+      - name: Restore master-only files
+        run: |
+          git checkout origin/master -- \
+            ph-css/pom.xml \
+            ph-csscompress-maven-plugin/pom.xml \
+            pom.xml
+
+          git add \
+            ph-css/pom.xml \
+            ph-csscompress-maven-plugin/pom.xml \
+            pom.xml
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Keep master-only files unchanged"
+          fi
+
+      - name: Push promotion branch
+        run: |
+          git push --force origin promotion/develop-to-master
+
       - name: Create promotion PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXISTING_PR=$(gh pr list \
+          PR=$(gh pr list \
             --base master \
-            --head develop \
+            --head promotion/develop-to-master \
             --state open \
             --json number \
             --jq '.[0].number')
 
-          if [ -n "$EXISTING_PR" ]; then
-            echo "Promotion PR #$EXISTING_PR already exists."
-            exit 0
+          if [ -z "$PR" ]; then
+            PR=$(gh pr create \
+              --base master \
+              --head promotion/develop-to-master \
+              --title "Promote develop to master" \
+              --body "Automatic promotion of develop to master.")
           fi
 
-          gh pr create \
-            --base master \
-            --head develop \
-            --title "Promote develop to master" \
-            --body "Automatic promotion of develop to master after PR #${{ github.event.pull_request.number }} was merged."
+          echo "Promotion PR: $PR"
 
       - name: Enable auto-merge
         env:
@@ -46,16 +101,22 @@ jobs:
         run: |
           PR=$(gh pr list \
             --base master \
-            --head develop \
+            --head promotion/develop-to-master \
             --state open \
             --json number \
             --jq '.[0].number')
 
-          if [ -z "$PR" ]; then
-            echo "No promotion PR found."
-            exit 1
-          fi
-
           gh pr merge "$PR" \
             --auto \
             --squash
+
+      - name: Close manual develop → master PR
+        if: >
+          github.event.pull_request.base.ref == 'master' &&
+          github.event.pull_request.head.ref == 'develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close \
+            "${{ github.event.pull_request.number }}" \
+            --comment "Replaced by the automatic promotion PR."

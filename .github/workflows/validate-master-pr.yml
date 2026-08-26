@@ -15,11 +15,23 @@ jobs:
         run: |
           SOURCE="${{ github.head_ref }}"
 
-          if [ "$SOURCE" != "promotion/develop-to-master" ] &&
-             [ "$SOURCE" != "sync/upstream-master" ]; then
-            echo "ERROR: Only promotion or upstream-sync branches may merge into master."
-            echo "Source branch: $SOURCE"
-            exit 1
-          fi
+          case "$SOURCE" in
+            promotion/develop-to-master)
+              echo "Valid promotion branch."
+              ;;
 
-          echo "Valid source branch: $SOURCE"
+            sync/upstream-master)
+              echo "Valid upstream synchronization branch."
+              ;;
+
+            develop)
+              echo "ERROR: Direct develop -> master PR."
+              echo "The promotion workflow must be used."
+              exit 1
+              ;;
+
+            *)
+              echo "ERROR: Invalid source branch: $SOURCE"
+              exit 1
+              ;;
+          esac

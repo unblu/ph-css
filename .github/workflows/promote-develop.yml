@@ -2,9 +2,13 @@ name: Promote develop to master
 
 on:
   pull_request:
-    types: [closed]
+    types:
+      - opened
+      - reopened
+      - closed
     branches:
       - develop
+      - master
 
 permissions:
   contents: write
@@ -12,17 +16,30 @@ permissions:
 
 jobs:
   promote:
-    if: github.event.pull_request.merged == true
+    if: >
+      (
+        github.event.pull_request.base.ref == 'develop' &&
+        github.event.pull_request.merged == true
+      )
+      ||
+      (
+        github.event.pull_request.base.ref == 'master' &&
+        github.event.pull_request.head.ref == 'develop' &&
+        (
+          github.event.action == 'opened' ||
+          github.event.action == 'reopened'
+        )
+      )
 
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Configure git
+      - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -35,9 +52,6 @@ jobs:
       - name: Create promotion branch
         run: |
           git checkout -B promotion/develop-to-master origin/master
-
-      - name: Merge develop
-        run: |
           git merge origin/develop --no-edit
 
       - name: Restore master-only files
@@ -60,12 +74,49 @@ jobs:
         run: |
           git push --force origin promotion/develop-to-master
 
-      - name: Create pull request
+      - name: Create promotion PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr create \
+          PR=$(gh pr list \
             --base master \
             --head promotion/develop-to-master \
-            --title "Promote develop to master" \
-            --body "Automatic promotion of develop to master."
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$PR" ]; then
+            PR=$(gh pr create \
+              --base master \
+              --head promotion/develop-to-master \
+              --title "Promote develop to master" \
+              --body "Automatic promotion of develop to master.")
+          fi
+
+          echo "Promotion PR: $PR"
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh pr list \
+            --base master \
+            --head promotion/develop-to-master \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          gh pr merge "$PR" \
+            --auto \
+            --squash
+
+      - name: Close manual develop → master PR
+        if: >
+          github.event.pull_request.base.ref == 'master' &&
+          github.event.pull_request.head.ref == 'develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close \
+            "${{ github.event.pull_request.number }}" \
+            --comment "Replaced by the automatic promotion PR."

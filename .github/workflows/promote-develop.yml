@@ -228,7 +228,19 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          gh pr merge "${PROMOTION_BRANCH}" \
+          PR_NUMBER="${{ steps.promotion-pr.outputs.number }}"
+
+          if [ -z "${PR_NUMBER}" ]; then
+            PR_NUMBER="${{ steps.create-promotion-pr.outputs.number }}"
+          fi
+
+          echo "Enabling auto-merge for PR #${PR_NUMBER}"
+
+          gh pr merge \
+            "${PR_NUMBER}" \
+            --repo "${REPOSITORY}" \
             --auto \
             --merge

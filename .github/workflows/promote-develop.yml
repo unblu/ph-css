@@ -222,3 +222,13 @@ jobs:
             --body "Automated promotion of develop to master.")
 
           echo "Created promotion PR: ${PR_NUMBER}"
+
+      # ------------------------------------------------------------
+      # Enable auto-merge for promotion PR
+      # ------------------------------------------------------------
+
+      - name: Enable auto-merge
+        run: |
+          gh pr merge "${PROMOTION_BRANCH}" \
+            --auto \
+            --merge

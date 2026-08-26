@@ -1,0 +1,187 @@
+name: Promote to upstream
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TARGET_REPO: phax/ph-css.git
+  TARGET_BRANCH: master
+  SOURCE_BRANCH: master
+  PROMOTION_BRANCH: promotion/master-to-upstream
+
+jobs:
+  promote:
+    # Only react to:
+    #
+    #   master -> upstream/master
+    #
+    # Ignore every other PR.
+    if: >
+      github.event.pull_request.head.ref == 'master' &&
+      github.event.pull_request.base.ref == 'master'
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ------------------------------------------------------------
+      # 1. Checkout source master
+      # ------------------------------------------------------------
+
+      - name: Checkout source master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # ------------------------------------------------------------
+      # 2. Configure git
+      # ------------------------------------------------------------
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # ------------------------------------------------------------
+      # 3. Fetch target repository
+      # ------------------------------------------------------------
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream \
+            https://github.com/${TARGET_REPO}.git
+
+          git fetch upstream ${TARGET_BRANCH}
+
+      # ------------------------------------------------------------
+      # 4. Create promotion branch from upstream/master
+      # ------------------------------------------------------------
+
+      - name: Create promotion branch
+        run: |
+          git checkout -B \
+            "${PROMOTION_BRANCH}" \
+            "upstream/${TARGET_BRANCH}"
+
+      # ------------------------------------------------------------
+      # 5. Merge source master
+      # ------------------------------------------------------------
+
+      - name: Merge source master
+        run: |
+          git merge \
+            --no-commit \
+            --no-ff \
+            "origin/${SOURCE_BRANCH}"
+
+      # ------------------------------------------------------------
+      # 6. Restore files that must NOT be promoted
+      # ------------------------------------------------------------
+
+      - name: Restore upstream-owned workflow files
+        run: |
+          git restore \
+            --source="upstream/${TARGET_BRANCH}" \
+            -- \
+            .github/workflows/
+
+      # ------------------------------------------------------------
+      # 7. Commit promotion branch
+      # ------------------------------------------------------------
+
+      - name: Commit promotion
+        run: |
+          git add -A
+
+          git commit \
+            -m "Promote master to upstream/master" \
+            || echo "Nothing to commit"
+
+      # ------------------------------------------------------------
+      # 8. Push promotion branch to TARGET repository
+      # ------------------------------------------------------------
+
+      - name: Push promotion branch
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" \
+            "${PROMOTION_BRANCH}" \
+            --force
+
+      # ------------------------------------------------------------
+      # 9. Find manually-created PR
+      # ------------------------------------------------------------
+
+      - name: Find direct promotion PR
+        id: direct_pr
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "${TARGET_REPO}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${SOURCE_REPO}:master" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # 10. Close manually-created direct PR
+      # ------------------------------------------------------------
+
+      - name: Close direct promotion PR
+        if: steps.direct_pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          gh pr close \
+            "${{ steps.direct_pr.outputs.number }}" \
+            --repo "${TARGET_REPO}" \
+            --comment \
+              "This promotion is handled automatically. \
+               A controlled promotion PR will be created."
+
+      # ------------------------------------------------------------
+      # 11. Create controlled promotion PR if necessary
+      # ------------------------------------------------------------
+
+      - name: Check promotion PR
+        id: promotion_pr
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "${TARGET_REPO}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${PROMOTION_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Create promotion PR
+        if: steps.promotion_pr.outputs.number == ''
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          gh pr create \
+            --repo "${TARGET_REPO}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${PROMOTION_BRANCH}" \
+            --title "Promote master to upstream" \
+            --body "This PR is automatically generated from source master."

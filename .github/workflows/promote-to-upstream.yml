@@ -94,7 +94,8 @@ jobs:
           git restore \
             --source="upstream/${TARGET_BRANCH}" \
             -- \
-            .github/workflows/
+            .github/workflows/ \
+            CLAUDE.md
 
       # ------------------------------------------------------------
       # 7. Commit promotion branch

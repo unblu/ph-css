@@ -1,0 +1,69 @@
+name: Promote master to upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/phax/ph-css.git
+          git fetch upstream master
+
+      - name: Create promotion branch
+        run: |
+          git checkout -b promotion/master-to-upstream upstream/master
+
+      - name: Merge source master
+        run: |
+          git merge --no-commit --no-ff origin/master
+
+      - name: Exclude workflow files
+        run: |
+          git restore --source=upstream/master -- \
+            .github/workflows/promote-develop.yml \
+            .github/workflows/sync-upstream.yml \
+            .github/workflows/validate-master-pr.yml
+
+      - name: Commit promotion
+        run: |
+          git add -A
+          git commit \
+            -m "Promote master to upstream/master" \
+            || echo "Nothing to commit"
+
+      - name: Push promotion branch to upstream
+        run: |
+          git push \
+            https://x-access-token:${{ secrets.UPSTREAM_TOKEN }}@github.com/phax/ph-css.git \
+            promotion/master-to-upstream \
+            --force
+
+      - name: Create upstream PR
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          gh pr create \
+            --repo phax/ph-css.git \
+            --base master \
+            --head promotion/master-to-upstream \
+            --title "Promote master to upstream" \
+            --body "Automated promotion of master."

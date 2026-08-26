@@ -13,10 +13,17 @@ jobs:
     steps:
       - name: Require develop as source branch
         run: |
-          if [ "${{ github.head_ref }}" != "develop" ]; then
-            echo "ERROR: Pull requests into master must come from develop."
-            echo "Source branch: ${{ github.head_ref }}"
-            exit 1
+          SOURCE="${{ github.head_ref }}"
+
+          if [ "$SOURCE" = "develop" ]; then
+            echo "Valid: develop -> master"
+            exit 0
           fi
 
-          echo "Valid: develop -> master"
+          if [ "$SOURCE" = "sync/upstream-master" ]; then
+            echo "Valid: upstream synchronization -> master"
+            exit 0
+          fi
+
+          echo "ERROR: Only develop or sync/upstream-master may merge into master."
+          exit 1

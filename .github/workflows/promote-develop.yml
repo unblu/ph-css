@@ -14,8 +14,22 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  REPOSITORY: unblu/ph-css
+  SOURCE_BRANCH: develop
+  TARGET_BRANCH: master
+  PROMOTION_BRANCH: promotion/develop-to-master
+
 jobs:
   promote:
+    # Two situations trigger this job:
+    #
+    # 1. A develop PR was merged.
+    #    -> create/update the promotion PR
+    #
+    # 2. Somebody manually created develop -> master.
+    #    -> create the controlled promotion PR and close the manual one.
+    #
     if: >
       (
         github.event.pull_request.base.ref == 'develop' &&
@@ -34,29 +48,77 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ------------------------------------------------------------
+      # Generate short-lived GitHub App installation token
+      # ------------------------------------------------------------
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PH_CSS_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.PH_CSS_PROMOTION_APP_KEY }}
+          owner: unblu
+          repositories: ph-css
+          permission-contents: write
+          permission-pull-requests: write
+
+      # ------------------------------------------------------------
+      # Configure Git
+      # ------------------------------------------------------------
+
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "ph-css-promotion[bot]"
+          git config user.email "ph-css-promotion[bot]@users.noreply.github.com"
+
+      # ------------------------------------------------------------
+      # Fetch branches
+      # ------------------------------------------------------------
 
       - name: Fetch branches
         run: |
           git fetch origin master
           git fetch origin develop
 
+      # ------------------------------------------------------------
+      # Create promotion branch from master
+      # ------------------------------------------------------------
+
       - name: Create promotion branch
         run: |
-          git checkout -B promotion/develop-to-master origin/master
-          git merge origin/develop --no-edit
+          git checkout -B \
+            "${PROMOTION_BRANCH}" \
+            "origin/${TARGET_BRANCH}"
+
+      # ------------------------------------------------------------
+      # Merge develop into promotion branch
+      # ------------------------------------------------------------
+
+      - name: Merge develop
+        run: |
+          git merge \
+            --no-commit \
+            --no-ff \
+            "origin/${SOURCE_BRANCH}"
+
+      # ------------------------------------------------------------
+      # Restore files that must remain master-only
+      # ------------------------------------------------------------
 
       - name: Restore master-only files
         run: |
-          git checkout origin/master -- \
+          git checkout "origin/${TARGET_BRANCH}" -- \
             ph-css/pom.xml \
             ph-csscompress-maven-plugin/pom.xml \
             pom.xml
@@ -70,53 +132,93 @@ jobs:
             git commit -m "Keep master-only files unchanged"
           fi
 
+      # ------------------------------------------------------------
+      # Push promotion branch
+      #
+      # IMPORTANT:
+      # Use the GitHub App token, NOT github.token.
+      # ------------------------------------------------------------
+
       - name: Push promotion branch
-        run: |
-          git push --force origin promotion/develop-to-master
-
-      - name: Create promotion PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          PR=$(gh pr list \
-            --base master \
-            --head promotion/develop-to-master \
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" \
+            "${PROMOTION_BRANCH}" \
+            --force
+
+      # ------------------------------------------------------------
+      # Find manually-created develop -> master PR
+      # ------------------------------------------------------------
+
+      - name: Find direct develop → master PR
+        id: direct-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "${REPOSITORY}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${SOURCE_BRANCH}" \
             --state open \
             --json number \
-            --jq '.[0].number')
+            --jq '.[0].number // empty')
 
-          if [ -z "$PR" ]; then
-            PR=$(gh pr create \
-              --base master \
-              --head promotion/develop-to-master \
-              --title "Promote develop to master" \
-              --body "Automatic promotion of develop to master.")
-          fi
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
-          echo "Promotion PR: $PR"
+      # ------------------------------------------------------------
+      # Close manually-created develop -> master PR
+      # ------------------------------------------------------------
 
-      - name: Enable auto-merge
+      - name: Close direct develop → master PR
+        if: steps.direct-pr.outputs.number != ''
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR=$(gh pr list \
-            --base master \
-            --head promotion/develop-to-master \
-            --state open \
-            --json number \
-            --jq '.[0].number')
-
-          gh pr merge "$PR" \
-            --auto \
-            --squash
-
-      - name: Close manual develop → master PR
-        if: >
-          github.event.pull_request.base.ref == 'master' &&
-          github.event.pull_request.head.ref == 'develop'
-        env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh pr close \
-            "${{ github.event.pull_request.number }}" \
-            --comment "Replaced by the automatic promotion PR."
+            "${{ steps.direct-pr.outputs.number }}" \
+            --repo "${REPOSITORY}" \
+            --comment \
+              "This direct promotion PR is replaced by the automated promotion PR."
+
+      # ------------------------------------------------------------
+      # Check whether promotion PR already exists
+      # ------------------------------------------------------------
+
+      - name: Find promotion PR
+        id: promotion-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "${REPOSITORY}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${PROMOTION_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # Create promotion PR
+      #
+      # IMPORTANT:
+      # This PR is created with the GitHub App token.
+      # Do NOT replace it with github.token.
+      # ------------------------------------------------------------
+
+      - name: Create promotion PR
+        if: steps.promotion-pr.outputs.number == ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER=$(gh pr create \
+            --repo "${REPOSITORY}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${PROMOTION_BRANCH}" \
+            --title "Promote develop to master" \
+            --body "Automated promotion of develop to master.")
+
+          echo "Created promotion PR: ${PR_NUMBER}"

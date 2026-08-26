@@ -11,19 +11,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Require develop as source branch
+      - name: Validate source branch
         run: |
           SOURCE="${{ github.head_ref }}"
 
-          if [ "$SOURCE" = "develop" ]; then
-            echo "Valid: develop -> master"
-            exit 0
+          if [ "$SOURCE" != "promotion/develop-to-master" ] &&
+             [ "$SOURCE" != "sync/upstream-master" ]; then
+            echo "ERROR: Only promotion or upstream-sync branches may merge into master."
+            echo "Source branch: $SOURCE"
+            exit 1
           fi
 
-          if [ "$SOURCE" = "sync/upstream-master" ]; then
-            echo "Valid: upstream synchronization -> master"
-            exit 0
-          fi
-
-          echo "ERROR: Only develop or sync/upstream-master may merge into master."
-          exit 1
+          echo "Valid source branch: $SOURCE"

@@ -2,6 +2,10 @@ name: Validate master PR
 
 on:
   pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
     branches:
       - master
 
@@ -12,8 +16,10 @@ jobs:
 
     steps:
       - name: Validate source branch
+        env:
+          SOURCE: ${{ github.head_ref }}
         run: |
-          SOURCE="${{ github.head_ref }}"
+          echo "Source branch: ${SOURCE}"
 
           case "$SOURCE" in
             promotion/develop-to-master)
@@ -25,13 +31,13 @@ jobs:
               ;;
 
             develop)
-              echo "ERROR: Direct develop -> master PR."
+              echo "::error::Direct develop -> master PR."
               echo "The promotion workflow must be used."
               exit 1
               ;;
 
             *)
-              echo "ERROR: Invalid source branch: $SOURCE"
+              echo "::error::Invalid source branch: ${SOURCE}"
               exit 1
               ;;
           esac

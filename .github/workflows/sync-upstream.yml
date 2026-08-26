@@ -1,0 +1,40 @@
+name: Sync upstream master
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure upstream
+        run: |
+          git remote add upstream https://github.com/phax/ph-css.git
+          git fetch upstream master
+
+      - name: Create sync branch
+        run: |
+          git checkout -B sync/upstream-master upstream/master
+          git push --force origin sync/upstream-master
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base master \
+            --head sync/upstream-master \
+            --title "Sync upstream/master" \
+            --body "Synchronize fork with upstream/master." \
+            || true

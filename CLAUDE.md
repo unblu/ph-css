@@ -4,7 +4,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ph-css is a Java-based CSS 3 parser and builder library (v8.1.2-SNAPSHOT). It parses CSS into a Java object model, supports traversal/modification via the visitor pattern, and can serialize back to CSS. The companion module `ph-csscompress-maven-plugin` provides build-time CSS compression.
+ph-css is a Java-based CSS 3 parser and builder library (v8.2.2-SNAPSHOT). It parses CSS into a Java object model, supports traversal/modification via the visitor pattern, and can serialize back to CSS. The companion module `ph-csscompress-maven-plugin` provides build-time CSS compression.
+
+## Fork Context
+
+This repository is unblu's fork of [phax/ph-css](https://github.com/phax/ph-css). It has two long-lived branches:
+
+| Branch | Content |
+|--------|---------|
+| `master` | 1:1 mirror of the upstream `phax/ph-css` `master`. Nothing is committed here directly. |
+| `develop` | Default working branch, holding everything this fork adds on top of upstream. Fork releases are tagged here. |
+
+Work branches (`feature/...`, `<issue>-<slug>`) are created from `develop` and merged back into `develop` by pull request. Upstream changes land on `master` and are merged from there into `develop`.
+
+### Branch-specific POM coordinates
+
+`develop` carries fork-specific coordinates so the produced artifacts never collide with the upstream ones:
+
+- `groupId`: `unblu.patched.com.helger` (upstream uses `com.helger`)
+- `version`: `8.2.2-SNAPSHOT`, released as `<upstream-version>-unblu-<n>` (for example `8.1.2-unblu-3`)
+
+`master` keeps the upstream coordinates. That is why the promotion workflow restores the three `pom.xml` files from `master` when it merges `develop` into `master`.
+
+### Automation (`.github/workflows/`)
+
+| Workflow | Trigger | Effect |
+|----------|---------|--------|
+| `sync-upstream.yml` | nightly + manual | Force-pushes `upstream/master` onto `sync/upstream-master` and opens a PR against `master`. |
+| `promote-develop.yml` | a PR is merged into `develop`, or a `develop` -> `master` PR is opened | Rebuilds `promotion/develop-to-master` from `master`, merges `develop` into it, restores the `master` POMs, opens the PR against `master` and enables squash auto-merge. A manually opened `develop` -> `master` PR is closed in favour of it. |
+| `validate-master-pr.yml` | PR targeting `master` | Only `promotion/develop-to-master` and `sync/upstream-master` may target `master`; anything else - including a direct `develop` PR - fails. |
+| `release-to-slack.yml` | GitHub release published | Announces the release on a chat webhook. |
+| `maven.yml` | push / PR | Upstream's build matrix (Java 17, 21, 25). |
+
+In short: upstream changes flow in via `master` -> `develop`, and changes made here flow out via `develop` -> `promotion/develop-to-master` -> `master`, from where they can be proposed upstream.
+
+### Releasing
+
+Releases are cut from `develop`, never from `master`:
+
+1. Merge the work branch into `develop`.
+2. Commit the version bump to `<upstream-version>-unblu-<n>`.
+3. Tag that commit and publish the GitHub release.
+4. Build with Java 17+ (`mvn clean install`) and publish the resulting `ph-css-parent-pom` and `ph-css` artifacts (POM, JAR, sources JAR) to the consuming project's internal Maven repository. Nothing from this fork is published to Maven Central.
 
 ## Build Commands
 
@@ -73,7 +114,7 @@ JavaCC generates parser sources into `target/generated-sources/jjtree` and `targ
 
 ### Key Dependencies
 
-- `ph-commons` (12.1.5) - Collection types (`ICommonsList`, `CommonsArrayList`), I/O utilities, type conversion
+- `ph-commons` (12.3.5) - Collection types (`ICommonsList`, `CommonsArrayList`), I/O utilities, type conversion
 - `ph-javacc-maven-plugin` (5.0.1) - Parser generation from `.jjt` grammars
 - JUnit 4 for tests
 

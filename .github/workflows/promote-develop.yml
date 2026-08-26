@@ -76,7 +76,7 @@ jobs:
 
       - name: Create promotion PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PROMOTION_APP_TOKEN }}
         run: |
           PR=$(gh pr list \
             --base master \
@@ -97,7 +97,7 @@ jobs:
 
       - name: Enable auto-merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PROMOTION_APP_TOKEN }}
         run: |
           PR=$(gh pr list \
             --base master \

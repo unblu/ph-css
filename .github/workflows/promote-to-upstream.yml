@@ -12,8 +12,9 @@ permissions:
   pull-requests: write
 
 env:
-  TARGET_REPO: phax/ph-css.git
+  TARGET_REPO: phax/ph-css
   TARGET_BRANCH: master
+  SOURCE_REPO: unblu/ph-css
   SOURCE_BRANCH: master
   PROMOTION_BRANCH: promotion/master-to-upstream
 

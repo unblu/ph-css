@@ -26,6 +26,31 @@ Work branches (`feature/...`, `<issue>-<slug>`) are created from `develop` and m
 
 `master` keeps the upstream coordinates. That is why the promotion workflow restores the three `pom.xml` files from `master` when it merges `develop` into `master`.
 
+### POM coordinates and the project version
+
+The fork renames the coordinates to `unblu.patched.com.helger` in all three POMs *and* in the
+`dependencyManagement` block of the root POM. Keeping the managed entries renamed matters: they are what
+lets `ph-csscompress-maven-plugin` depend on `ph-css` without a `<version>` of its own, exactly as upstream
+does. The project version therefore appears exactly three times - in `pom.xml`, and in the `<parent>` block
+of each of the two modules:
+
+```bash
+grep -rn -- "-SNAPSHOT" --include=pom.xml .
+```
+
+If a managed entry ever falls back to `com.helger` - for instance through a `master` -> `develop` merge
+that brings upstream's POMs back - the plugin module stops resolving and has to spell its `ph-css` version
+out again. Such a hardcoded version does not follow the next upstream version bump, because the merge keeps
+our side of the dependency block, and the build then fails on the last module with:
+
+```
+[ERROR] Failed to execute goal on project ph-csscompress-maven-plugin: Could not resolve dependencies
+[ERROR] dependency: unblu.patched.com.helger:ph-css:jar:8.1.2-SNAPSHOT (compile)
+```
+
+So after merging `master` into `develop`, check both the three versions and the group ids of the two
+managed entries.
+
 ### Automation (`.github/workflows/`)
 
 | Workflow | Trigger | Effect |

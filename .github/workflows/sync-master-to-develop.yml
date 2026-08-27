@@ -98,9 +98,13 @@ jobs:
             ph-csscompress-maven-plugin/pom.xml \
             pom.xml
 
-          if ! git diff --cached --quiet; then
-            git commit -m "Keep develop-only files unchanged"
-          fi
+      # ------------------------------------------------------------
+      # Commit synchronization
+      # ------------------------------------------------------------
+
+      - name: Commit synchronization
+        run: |
+          git commit -m "Sync master back to develop"
 
       # ------------------------------------------------------------
       # Push synchronized develop

@@ -115,10 +115,10 @@ jobs:
 
       - name: Push promotion branch
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
         run: |
           git push \
-            "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" \
+            "https://x-access-token:${UPSTREAM_TOKEN}@github.com/${TARGET_REPO}.git" \
             "${PROMOTION_BRANCH}" \
             --force
 

@@ -19,19 +19,97 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Sync master into develop
+      # ------------------------------------------------------------
+      # Generate GitHub App installation token
+      # ------------------------------------------------------------
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PH_CSS_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.PH_CSS_PROMOTION_APP_KEY }}
+          owner: unblu
+          repositories: ph-css
+          permission-contents: write
+          permission-pull-requests: write
+
+      # ------------------------------------------------------------
+      # Configure Git
+      # ------------------------------------------------------------
+
+      - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "ph-css-promotion[bot]"
+          git config user.email "ph-css-promotion[bot]@users.noreply.github.com"
 
-          git fetch origin master develop
+      # ------------------------------------------------------------
+      # Fetch branches
+      # ------------------------------------------------------------
 
-          git checkout develop
-          git merge origin/master --no-edit
+      - name: Fetch branches
+        run: |
+          git fetch origin master
+          git fetch origin develop
 
-          git push origin develop
+      # ------------------------------------------------------------
+      # Checkout develop
+      # ------------------------------------------------------------
+
+      - name: Checkout develop
+        run: |
+          git checkout -B develop origin/develop
+
+      # ------------------------------------------------------------
+      # Merge master into develop
+      # ------------------------------------------------------------
+
+      - name: Merge master
+        run: |
+          git merge \
+            --no-commit \
+            --no-ff \
+            origin/master
+
+      # ------------------------------------------------------------
+      # Restore develop-only POM files
+      #
+      # These files must always remain exactly as they were on develop.
+      # ------------------------------------------------------------
+
+      - name: Restore develop-only POM files
+        run: |
+          git checkout origin/develop -- \
+            ph-css/pom.xml \
+            ph-csscompress-maven-plugin/pom.xml \
+            pom.xml
+
+          git add \
+            ph-css/pom.xml \
+            ph-csscompress-maven-plugin/pom.xml \
+            pom.xml
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Keep develop-only files unchanged"
+          fi
+
+      # ------------------------------------------------------------
+      # Push synchronized develop
+      # ------------------------------------------------------------
+
+      - name: Push develop
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/unblu/ph-css.git" \
+            develop

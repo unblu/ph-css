@@ -180,10 +180,52 @@ jobs:
         if: steps.promotion_pr.outputs.number == ''
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          SOURCE_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          cat > /tmp/pr-body.md <<EOF
+          ${PR_BODY}
+
+          ---
+
+          Automatically promoted from:
+          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
+          EOF
+
           gh pr create \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
             --head "${PROMOTION_BRANCH}" \
-            --title "Promote master to upstream" \
-            --body "This PR is automatically generated from source master."
+            --title "${PR_TITLE}" \
+            --body-file /tmp/pr-body.md
+
+      # ------------------------------------------------------------
+      # 13. Update existing promotion PR
+      #
+      # This keeps title/description synchronized when the source
+      # PR receives new commits or its description is edited.
+      # ------------------------------------------------------------
+
+      - name: Update promotion PR
+        if: steps.promotion_pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          SOURCE_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          cat > /tmp/pr-body.md <<EOF
+          ${PR_BODY}
+
+          ---
+
+          Automatically promoted from:
+          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
+          EOF
+
+          gh pr edit \
+            "${{ steps.promotion_pr.outputs.number }}" \
+            --repo "${TARGET_REPO}" \
+            --title "${PR_TITLE}" \
+            --body-file /tmp/pr-body.md

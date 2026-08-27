@@ -8,23 +8,25 @@ on:
       - synchronize
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 env:
   TARGET_REPO: phax/ph-css
   TARGET_BRANCH: master
+
   SOURCE_REPO: unblu/ph-css
   SOURCE_BRANCH: master
+
   PROMOTION_BRANCH: promotion/master-to-upstream
 
 jobs:
   promote:
-    # Only react to:
+    # Only react to PRs:
     #
-    #   master -> upstream/master
+    #   master -> master
     #
-    # Ignore every other PR.
+    # in the source repository.
     if: >
       github.event.pull_request.head.ref == 'master' &&
       github.event.pull_request.base.ref == 'master'
@@ -44,17 +46,34 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # 2. Configure git
+      # 2. Generate GitHub App installation token
+      #
+      # This token is used ONLY for operations on unblu/ph-css.
+      # ------------------------------------------------------------
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PH_CSS_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.PH_CSS_PROMOTION_APP_KEY }}
+          owner: unblu
+          repositories: ph-css
+          permission-contents: write
+          permission-pull-requests: write
+
+      # ------------------------------------------------------------
+      # 3. Configure git
       # ------------------------------------------------------------
 
       - name: Configure git
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "ph-css-promotion[bot]"
           git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
+            "ph-css-promotion[bot]@users.noreply.github.com"
 
       # ------------------------------------------------------------
-      # 3. Fetch target repository
+      # 4. Add upstream remote and fetch upstream master
       # ------------------------------------------------------------
 
       - name: Add upstream remote
@@ -65,7 +84,7 @@ jobs:
           git fetch upstream ${TARGET_BRANCH}
 
       # ------------------------------------------------------------
-      # 4. Create promotion branch from upstream/master
+      # 5. Create promotion branch from upstream/master
       # ------------------------------------------------------------
 
       - name: Create promotion branch
@@ -75,7 +94,7 @@ jobs:
             "upstream/${TARGET_BRANCH}"
 
       # ------------------------------------------------------------
-      # 5. Merge source master
+      # 6. Merge source master
       # ------------------------------------------------------------
 
       - name: Merge source master
@@ -86,7 +105,7 @@ jobs:
             "origin/${SOURCE_BRANCH}"
 
       # ------------------------------------------------------------
-      # 6. Restore files that must NOT be promoted
+      # 7. Restore files that are owned by upstream
       # ------------------------------------------------------------
 
       - name: Restore upstream-owned workflow files
@@ -98,7 +117,7 @@ jobs:
             CLAUDE.md
 
       # ------------------------------------------------------------
-      # 7. Commit promotion branch
+      # 8. Commit promotion branch
       # ------------------------------------------------------------
 
       - name: Commit promotion
@@ -110,58 +129,29 @@ jobs:
             || echo "Nothing to commit"
 
       # ------------------------------------------------------------
-      # 8. Push promotion branch to TARGET repository
+      # 9. Push promotion branch to OUR repository
+      #
+      # IMPORTANT:
+      # Use the GitHub App token, not github.token.
       # ------------------------------------------------------------
 
       - name: Push promotion branch
         env:
-          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git push \
-            "https://x-access-token:${UPSTREAM_TOKEN}@github.com/${TARGET_REPO}.git" \
+            "https://x-access-token:${APP_TOKEN}@github.com/${SOURCE_REPO}.git" \
             "${PROMOTION_BRANCH}" \
             --force
 
       # ------------------------------------------------------------
-      # 9. Find manually-created PR
+      # 10. Find existing upstream promotion PR
+      #
+      # This uses UPSTREAM_TOKEN because the PR belongs to
+      # phax/ph-css.
       # ------------------------------------------------------------
 
-      - name: Find direct promotion PR
-        id: direct_pr
-        env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
-        run: |
-          PR_NUMBER=$(gh pr list \
-            --repo "${TARGET_REPO}" \
-            --base "${TARGET_BRANCH}" \
-            --head "${SOURCE_REPO}:master" \
-            --state open \
-            --json number \
-            --jq '.[0].number // empty')
-
-          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
-
-      # ------------------------------------------------------------
-      # 10. Close manually-created direct PR
-      # ------------------------------------------------------------
-
-      - name: Close direct promotion PR
-        if: steps.direct_pr.outputs.number != ''
-        env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
-        run: |
-          gh pr close \
-            "${{ steps.direct_pr.outputs.number }}" \
-            --repo "${TARGET_REPO}" \
-            --comment \
-              "This promotion is handled automatically. \
-               A controlled promotion PR will be created."
-
-      # ------------------------------------------------------------
-      # 11. Create controlled promotion PR if necessary
-      # ------------------------------------------------------------
-
-      - name: Check promotion PR
+      - name: Find promotion PR
         id: promotion_pr
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
@@ -169,12 +159,18 @@ jobs:
           PR_NUMBER=$(gh pr list \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "${PROMOTION_BRANCH}" \
+            --head "${SOURCE_REPO}:${PROMOTION_BRANCH}" \
             --state open \
             --json number \
             --jq '.[0].number // empty')
 
           echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # 11. Create upstream promotion PR
+      #
+      # Preserve original title and description.
+      # ------------------------------------------------------------
 
       - name: Create promotion PR
         if: steps.promotion_pr.outputs.number == ''
@@ -190,21 +186,21 @@ jobs:
           ---
 
           Automatically promoted from:
+
           https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 
           gh pr create \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "${PROMOTION_BRANCH}" \
+            --head "${SOURCE_REPO}:${PROMOTION_BRANCH}" \
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
 
       # ------------------------------------------------------------
-      # 13. Update existing promotion PR
+      # 12. Update existing promotion PR
       #
-      # This keeps title/description synchronized when the source
-      # PR receives new commits or its description is edited.
+      # Keeps title and description synchronized.
       # ------------------------------------------------------------
 
       - name: Update promotion PR
@@ -221,6 +217,7 @@ jobs:
           ---
 
           Automatically promoted from:
+
           https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 

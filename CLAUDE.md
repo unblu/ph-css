@@ -8,60 +8,84 @@ ph-css is a Java-based CSS 3 parser and builder library (v8.2.2-SNAPSHOT). It pa
 
 ## Fork Context
 
-This repository is unblu's fork of [phax/ph-css](https://github.com/phax/ph-css). It has two long-lived branches:
+This repository is unblu's fork of [phax/ph-css](https://github.com/phax/ph-css). Two branches are
+permanent, the others are created and force-updated by the automation:
 
 | Branch | Content |
 |--------|---------|
-| `master` | 1:1 mirror of the upstream `phax/ph-css` `master`. Nothing is committed here directly. |
+| `master` | Mirror of the upstream `phax/ph-css` `master`, plus the fork-only files (see below). Nothing is committed here directly. |
 | `develop` | Default working branch, holding everything this fork adds on top of upstream. Fork releases are tagged here. |
+| `sync/upstream-master` | Automation: upstream's `master`, waiting to be merged into `master`. |
+| `promotion/develop-to-master` | Automation: `master` with `develop` merged into it, waiting to be merged into `master`. |
+| `promotion/master-to-upstream` | Automation: lives in `phax/ph-css`; `upstream/master` with our `master` merged into it, proposed there as a pull request. |
 
-Work branches (`feature/...`, `<issue>-<slug>`) are created from `develop` and merged back into `develop` by pull request. Upstream changes land on `master` and are merged from there into `develop`.
-
-### Branch-specific POM coordinates
-
-`develop` carries fork-specific coordinates so the produced artifacts never collide with the upstream ones:
-
-- `groupId`: `unblu.patched.com.helger` (upstream uses `com.helger`)
-- `version`: `8.2.2-SNAPSHOT`, released as `<upstream-version>-unblu-<n>` (for example `8.1.2-unblu-3`)
-
-`master` keeps the upstream coordinates. That is why the promotion workflow restores the three `pom.xml` files from `master` when it merges `develop` into `master`.
+Work branches (`feature/...`, `<issue>-<slug>`) are created from `develop` and merged back into `develop`
+by pull request. Everything else is automated: each hop between `develop`, `master` and upstream is done by
+a workflow, not by hand.
 
 ### POM coordinates and the project version
 
-The fork renames the coordinates to `unblu.patched.com.helger` in all three POMs *and* in the
-`dependencyManagement` block of the root POM. Keeping the managed entries renamed matters: they are what
-lets `ph-csscompress-maven-plugin` depend on `ph-css` without a `<version>` of its own, exactly as upstream
-does. The project version therefore appears exactly three times - in `pom.xml`, and in the `<parent>` block
-of each of the two modules:
+`develop` carries fork-specific coordinates so that the produced artifacts never collide with the upstream
+ones:
+
+- `groupId`: `unblu.patched.com.helger` instead of `com.helger`, in the three POMs *and* in the
+  `dependencyManagement` block of the root POM
+- `version`: `8.2.2-SNAPSHOT`, released as `<upstream-version>-unblu-<n>` (for example `8.1.2-unblu-3`)
+
+`master` keeps the upstream coordinates, so the three `pom.xml` files are never promoted in either
+direction: `promote-develop.yml` restores them from `master`, `sync-master-to-develop.yml` restores them
+from `develop`.
+
+Keeping the managed entries renamed matters: they are what lets `ph-csscompress-maven-plugin` depend on
+`ph-css` without a `<version>` of its own, exactly as upstream does. The project version therefore appears
+exactly three times - in `pom.xml`, and in the `<parent>` block of each of the two modules:
 
 ```bash
 grep -rn -- "-SNAPSHOT" --include=pom.xml .
 ```
 
-If a managed entry ever falls back to `com.helger` - for instance through a `master` -> `develop` merge
-that brings upstream's POMs back - the plugin module stops resolving and has to spell its `ph-css` version
-out again. Such a hardcoded version does not follow the next upstream version bump, because the merge keeps
-our side of the dependency block, and the build then fails on the last module with:
+If a managed entry ever falls back to `com.helger` - for instance through a merge that brings upstream's
+POMs back - the plugin module stops resolving and has to spell its `ph-css` version out again. Such a
+hardcoded version does not follow the next upstream version bump, because the merge keeps our side of the
+dependency block, and the build then fails on the last module with:
 
 ```
 [ERROR] Failed to execute goal on project ph-csscompress-maven-plugin: Could not resolve dependencies
 [ERROR] dependency: unblu.patched.com.helger:ph-css:jar:8.1.2-SNAPSHOT (compile)
 ```
 
-So after merging `master` into `develop`, check both the three versions and the group ids of the two
-managed entries.
+So after any merge into `develop`, check both the three versions and the group ids of the two managed
+entries.
 
 ### Automation (`.github/workflows/`)
 
 | Workflow | Trigger | Effect |
 |----------|---------|--------|
-| `sync-upstream.yml` | nightly + manual | Force-pushes `upstream/master` onto `sync/upstream-master` and opens a PR against `master`. |
-| `promote-develop.yml` | a PR is merged into `develop`, or a `develop` -> `master` PR is opened | Rebuilds `promotion/develop-to-master` from `master`, merges `develop` into it, restores the `master` POMs, opens the PR against `master` and enables squash auto-merge. A manually opened `develop` -> `master` PR is closed in favour of it. |
+| `sync-upstream.yml` | nightly (03:00 UTC) + manual | Force-pushes `upstream/master` onto `sync/upstream-master` and opens a PR against `master`. |
 | `validate-master-pr.yml` | PR targeting `master` | Only `promotion/develop-to-master` and `sync/upstream-master` may target `master`; anything else - including a direct `develop` PR - fails. |
+| `promote-develop.yml` | a PR is merged into `develop`, or a `develop` -> `master` PR is opened | Rebuilds `promotion/develop-to-master` from `master`, merges `develop` into it, restores the `master` POMs, force-pushes it, opens the PR against `master` and enables auto-merge. A manually opened `develop` -> `master` PR is closed in favour of it. |
+| `sync-master-to-develop.yml` | the `promotion/develop-to-master` PR is merged into `master` | Merges `master` back into `develop`, restoring the `develop` POMs, and pushes `develop`. This keeps the two branches identical apart from the POMs. |
+| `promote-to-upstream.yml` | a PR from this fork's `master` to `phax/ph-css` `master` | Rebuilds `promotion/master-to-upstream` from `upstream/master`, merges our `master` into it, restores `.github/workflows/` and `CLAUDE.md` from upstream, force-pushes the branch into `phax/ph-css` and opens (or updates) the upstream PR with the source PR's title, body and a back-link. The manually opened PR is closed. |
 | `release-to-slack.yml` | GitHub release published | Announces the release on a chat webhook. |
 | `maven.yml` | push / PR | Upstream's build matrix (Java 17, 21, 25). |
 
-In short: upstream changes flow in via `master` -> `develop`, and changes made here flow out via `develop` -> `promotion/develop-to-master` -> `master`, from where they can be proposed upstream.
+Two things to know before touching these workflows:
+
+- The promotion and sync-back workflows push with a GitHub App installation token
+  (`ph-css-promotion[bot]`), not with `github.token`. A push made with the default token does not trigger
+  the next workflow, which would break the chain. `promote-to-upstream.yml` writes to `phax/ph-css` with
+  the `UPSTREAM_TOKEN` secret.
+- `.github/workflows/` and this `CLAUDE.md` are fork-only. `promote-to-upstream.yml` restores them from
+  upstream, so they never show up in an upstream pull request.
+
+A full round trip:
+
+1. `sync-upstream.yml` brings new upstream commits onto `master`.
+2. Work happens on `develop`, through work-branch pull requests.
+3. `promote-develop.yml` carries `develop` onto `master` via `promotion/develop-to-master`.
+4. `sync-master-to-develop.yml` merges `master` back into `develop`.
+5. Opening a pull request from our `master` to `phax/ph-css` triggers `promote-to-upstream.yml`, which
+   turns it into a clean upstream pull request.
 
 ### Releasing
 

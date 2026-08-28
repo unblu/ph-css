@@ -27,37 +27,11 @@ jobs:
     steps:
 
       # ------------------------------------------------------------
-      # 1. Checkout source
-      # ------------------------------------------------------------
-
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          fetch-depth: 0
-
-      # ------------------------------------------------------------
-      # 2. GitHub App token for OUR repository
-      # ------------------------------------------------------------
-
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.PH_CSS_PROMOTION_APP_ID }}
-          private-key: ${{ secrets.PH_CSS_PROMOTION_APP_KEY }}
-          owner: unblu
-          repositories: ph-css
-          permission-contents: write
-          permission-pull-requests: write
-
-      # ------------------------------------------------------------
-      # 3. Find manually-created upstream PR
+      # 1. Find manually-created upstream PR
       #
-      # This is the important part.
+      # We deliberately do this FIRST.
       #
-      # We query phax/ph-css instead of relying on a pull_request
-      # event there.
+      # If no manual PR exists, this workflow does nothing.
       # ------------------------------------------------------------
 
       - name: Find manual upstream PR
@@ -72,8 +46,6 @@ jobs:
             --state open \
             --json number,title,body \
             --limit 1)
-
-          echo "PR_JSON=${PR_JSON}" >> "$GITHUB_ENV"
 
           PR_NUMBER=$(echo "${PR_JSON}" | jq -r '.[0].number // empty')
           PR_TITLE=$(echo "${PR_JSON}" | jq -r '.[0].title // empty')
@@ -93,11 +65,47 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "No manual upstream PR found."
+            exit 0
+          fi
+
+          echo "Found manual upstream PR #${PR_NUMBER}"
+          echo "Title: ${PR_TITLE}"
+
+      # ------------------------------------------------------------
+      # 2. Generate GitHub App token for OUR repository
+      # ------------------------------------------------------------
+
+      - name: Generate GitHub App token
+        if: steps.upstream_pr.outputs.number != ''
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PH_CSS_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.PH_CSS_PROMOTION_APP_KEY }}
+          owner: unblu
+          repositories: ph-css
+          permission-contents: write
+          permission-pull-requests: write
+
+      # ------------------------------------------------------------
+      # 3. Checkout source repository
+      # ------------------------------------------------------------
+
+      - name: Checkout source
+        if: steps.upstream_pr.outputs.number != ''
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
       # ------------------------------------------------------------
       # 4. Configure git
       # ------------------------------------------------------------
 
       - name: Configure git
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git config user.name "ph-css-promotion[bot]"
           git config user.email \
@@ -108,6 +116,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Add upstream remote
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git remote add upstream \
             https://github.com/${TARGET_REPO}.git
@@ -119,6 +128,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Create promotion branch
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git checkout -B \
             "${PROMOTION_BRANCH}" \
@@ -129,6 +139,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Merge source master
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git merge \
             --no-commit \
@@ -140,6 +151,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Restore upstream-owned files
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git restore \
             --source="upstream/${TARGET_BRANCH}" \
@@ -152,6 +164,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Commit promotion
+        if: steps.upstream_pr.outputs.number != ''
         run: |
           git add -A
 
@@ -164,6 +177,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Push promotion branch
+        if: steps.upstream_pr.outputs.number != ''
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -177,6 +191,7 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Find promotion PR
+        if: steps.upstream_pr.outputs.number != ''
         id: promotion_pr
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
@@ -193,10 +208,14 @@ jobs:
 
       # ------------------------------------------------------------
       # 12. Create controlled promotion PR
+      #
+      # Title and body come from the manual upstream PR.
       # ------------------------------------------------------------
 
       - name: Create promotion PR
-        if: steps.promotion_pr.outputs.number == ''
+        if: >
+          steps.upstream_pr.outputs.number != '' &&
+          steps.promotion_pr.outputs.number == ''
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
 
@@ -216,7 +235,7 @@ jobs:
 
           Automatically promoted from:
 
-          https://github.com/${TARGET_REPO}/pull/${SOURCE_PR_NUMBER}
+          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 
           gh pr create \
@@ -228,10 +247,14 @@ jobs:
 
       # ------------------------------------------------------------
       # 13. Update existing controlled promotion PR
+      #
+      # Keeps title/body synchronized with the manual PR.
       # ------------------------------------------------------------
 
       - name: Update promotion PR
-        if: steps.promotion_pr.outputs.number != '' && steps.upstream_pr.outputs.number != ''
+        if: >
+          steps.upstream_pr.outputs.number != '' &&
+          steps.promotion_pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
 
@@ -240,6 +263,10 @@ jobs:
           SOURCE_PR_NUMBER: ${{ steps.upstream_pr.outputs.number }}
 
         run: |
+          if [ -z "${PR_TITLE}" ]; then
+            PR_TITLE="Promote master to upstream"
+          fi
+
           cat > /tmp/pr-body.md <<EOF
           ${PR_BODY}
 
@@ -247,7 +274,7 @@ jobs:
 
           Automatically promoted from:
 
-          https://github.com/${TARGET_REPO}/pull/${SOURCE_PR_NUMBER}
+          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 
           gh pr edit \
@@ -255,18 +282,3 @@ jobs:
             --repo "${TARGET_REPO}" \
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
-
-      # ------------------------------------------------------------
-      # 14. Close manual PR
-      # ------------------------------------------------------------
-
-#      - name: Close manual upstream PR
-#        if: steps.upstream_pr.outputs.number != ''
-#        env:
-#          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
-#        run: |
-#          gh pr close \
-#            "${{ steps.upstream_pr.outputs.number }}" \
-#            --repo "${TARGET_REPO}" \
-#            --comment \
-#              "This direct promotion PR is replaced by the automated promotion PR."

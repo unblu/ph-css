@@ -2,8 +2,11 @@ name: Promote to upstream
 
 on:
   schedule:
-    # Check for a manually-created upstream PR every 5 minutes
-    - cron: '*/5 * * * *'
+    # Safety net for a manually-created upstream PR. workflow_dispatch below
+    # is the primary path - GitHub drops or heavily delays frequent schedules
+    # on a public fork, so an hourly check off the top of the hour is the most
+    # this can rely on.
+    - cron: '37 * * * *'
 
   workflow_dispatch:
 

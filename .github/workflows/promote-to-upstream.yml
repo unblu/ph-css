@@ -264,6 +264,9 @@ jobs:
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
 
+          echo "Created controlled promotion PR #${PR_NUMBER}"
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
       # ------------------------------------------------------------
       # 13. Update existing controlled promotion PR
       #
@@ -301,3 +304,25 @@ jobs:
             --repo "${TARGET_REPO}" \
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
+
+      # ------------------------------------------------------------
+      # 14. Close original manual upstream PR
+      #
+      # Only close it after the controlled promotion PR exists.
+      # ------------------------------------------------------------
+
+      - name: Close manual upstream PR
+        if: steps.upstream_pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          PROMOTION_PR_NUMBER: ${{ steps.promotion_pr.outputs.number || steps.create_promotion_pr.outputs.number }}
+        run: |
+          echo "Closing original manual upstream PR #${{ steps.upstream_pr.outputs.number }}"
+          echo "Replacement promotion PR: #${PROMOTION_PR_NUMBER}"
+
+          gh pr close \
+            "${{ steps.upstream_pr.outputs.number }}" \
+            --repo "${TARGET_REPO}" \
+            --comment \
+              "This PR is replaced by the automated promotion PR #${PROMOTION_PR_NUMBER}."
+

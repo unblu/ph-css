@@ -1,11 +1,11 @@
 name: Promote to upstream
 
 on:
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
+  schedule:
+    # Check for a manually-created upstream PR every 5 minutes
+    - cron: '*/5 * * * *'
+
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,33 +22,22 @@ env:
 
 jobs:
   promote:
-    # Only react to PRs:
-    #
-    #   master -> master
-    #
-    # in the source repository.
-    if: >
-      github.event.pull_request.head.ref == 'master' &&
-      github.event.pull_request.base.ref == 'master'
-
     runs-on: ubuntu-latest
 
     steps:
 
       # ------------------------------------------------------------
-      # 1. Checkout source master
+      # 1. Checkout source
       # ------------------------------------------------------------
 
-      - name: Checkout source master
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # 2. Generate GitHub App installation token
-      #
-      # This token is used ONLY for operations on unblu/ph-css.
+      # 2. GitHub App token for OUR repository
       # ------------------------------------------------------------
 
       - name: Generate GitHub App token
@@ -63,7 +52,49 @@ jobs:
           permission-pull-requests: write
 
       # ------------------------------------------------------------
-      # 3. Configure git
+      # 3. Find manually-created upstream PR
+      #
+      # This is the important part.
+      #
+      # We query phax/ph-css instead of relying on a pull_request
+      # event there.
+      # ------------------------------------------------------------
+
+      - name: Find manual upstream PR
+        id: upstream_pr
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          PR_JSON=$(gh pr list \
+            --repo "${TARGET_REPO}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${SOURCE_REPO}:master" \
+            --state open \
+            --json number,title,body \
+            --limit 1)
+
+          echo "PR_JSON=${PR_JSON}" >> "$GITHUB_ENV"
+
+          PR_NUMBER=$(echo "${PR_JSON}" | jq -r '.[0].number // empty')
+          PR_TITLE=$(echo "${PR_JSON}" | jq -r '.[0].title // empty')
+          PR_BODY=$(echo "${PR_JSON}" | jq -r '.[0].body // empty')
+
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo 'title<<EOF'
+            echo "${PR_TITLE}"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo 'body<<EOF'
+            echo "${PR_BODY}"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # 4. Configure git
       # ------------------------------------------------------------
 
       - name: Configure git
@@ -73,7 +104,7 @@ jobs:
             "ph-css-promotion[bot]@users.noreply.github.com"
 
       # ------------------------------------------------------------
-      # 4. Add upstream remote and fetch upstream master
+      # 5. Add upstream remote
       # ------------------------------------------------------------
 
       - name: Add upstream remote
@@ -84,7 +115,7 @@ jobs:
           git fetch upstream ${TARGET_BRANCH}
 
       # ------------------------------------------------------------
-      # 5. Create promotion branch from upstream/master
+      # 6. Create promotion branch from upstream/master
       # ------------------------------------------------------------
 
       - name: Create promotion branch
@@ -94,7 +125,7 @@ jobs:
             "upstream/${TARGET_BRANCH}"
 
       # ------------------------------------------------------------
-      # 6. Merge source master
+      # 7. Merge source master
       # ------------------------------------------------------------
 
       - name: Merge source master
@@ -105,10 +136,10 @@ jobs:
             "origin/${SOURCE_BRANCH}"
 
       # ------------------------------------------------------------
-      # 7. Restore files that are owned by upstream
+      # 8. Restore upstream-owned files
       # ------------------------------------------------------------
 
-      - name: Restore upstream-owned workflow files
+      - name: Restore upstream-owned files
         run: |
           git restore \
             --source="upstream/${TARGET_BRANCH}" \
@@ -117,7 +148,7 @@ jobs:
             CLAUDE.md
 
       # ------------------------------------------------------------
-      # 8. Commit promotion branch
+      # 9. Commit promotion
       # ------------------------------------------------------------
 
       - name: Commit promotion
@@ -129,10 +160,7 @@ jobs:
             || echo "Nothing to commit"
 
       # ------------------------------------------------------------
-      # 9. Push promotion branch to OUR repository
-      #
-      # IMPORTANT:
-      # Use the GitHub App token, not github.token.
+      # 10. Push promotion branch to OUR repository
       # ------------------------------------------------------------
 
       - name: Push promotion branch
@@ -145,10 +173,7 @@ jobs:
             --force
 
       # ------------------------------------------------------------
-      # 10. Find existing upstream promotion PR
-      #
-      # This uses UPSTREAM_TOKEN because the PR belongs to
-      # phax/ph-css.
+      # 11. Find existing controlled promotion PR
       # ------------------------------------------------------------
 
       - name: Find promotion PR
@@ -167,19 +192,23 @@ jobs:
           echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------
-      # 11. Create upstream promotion PR
-      #
-      # Preserve original title and description.
+      # 12. Create controlled promotion PR
       # ------------------------------------------------------------
 
       - name: Create promotion PR
         if: steps.promotion_pr.outputs.number == ''
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          SOURCE_PR_NUMBER: ${{ github.event.pull_request.number }}
+
+          PR_TITLE: ${{ steps.upstream_pr.outputs.title }}
+          PR_BODY: ${{ steps.upstream_pr.outputs.body }}
+          SOURCE_PR_NUMBER: ${{ steps.upstream_pr.outputs.number }}
+
         run: |
+          if [ -z "${PR_TITLE}" ]; then
+            PR_TITLE="Promote master to upstream"
+          fi
+
           cat > /tmp/pr-body.md <<EOF
           ${PR_BODY}
 
@@ -187,7 +216,7 @@ jobs:
 
           Automatically promoted from:
 
-          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
+          https://github.com/${TARGET_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 
           gh pr create \
@@ -198,18 +227,18 @@ jobs:
             --body-file /tmp/pr-body.md
 
       # ------------------------------------------------------------
-      # 12. Update existing promotion PR
-      #
-      # Keeps title and description synchronized.
+      # 13. Update existing controlled promotion PR
       # ------------------------------------------------------------
 
       - name: Update promotion PR
-        if: steps.promotion_pr.outputs.number != ''
+        if: steps.promotion_pr.outputs.number != '' && steps.upstream_pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          SOURCE_PR_NUMBER: ${{ github.event.pull_request.number }}
+
+          PR_TITLE: ${{ steps.upstream_pr.outputs.title }}
+          PR_BODY: ${{ steps.upstream_pr.outputs.body }}
+          SOURCE_PR_NUMBER: ${{ steps.upstream_pr.outputs.number }}
+
         run: |
           cat > /tmp/pr-body.md <<EOF
           ${PR_BODY}
@@ -218,7 +247,7 @@ jobs:
 
           Automatically promoted from:
 
-          https://github.com/${SOURCE_REPO}/pull/${SOURCE_PR_NUMBER}
+          https://github.com/${TARGET_REPO}/pull/${SOURCE_PR_NUMBER}
           EOF
 
           gh pr edit \
@@ -226,3 +255,18 @@ jobs:
             --repo "${TARGET_REPO}" \
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
+
+      # ------------------------------------------------------------
+      # 14. Close manual PR
+      # ------------------------------------------------------------
+
+#      - name: Close manual upstream PR
+#        if: steps.upstream_pr.outputs.number != ''
+#        env:
+#          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+#        run: |
+#          gh pr close \
+#            "${{ steps.upstream_pr.outputs.number }}" \
+#            --repo "${TARGET_REPO}" \
+#            --comment \
+#              "This direct promotion PR is replaced by the automated promotion PR."

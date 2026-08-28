@@ -39,17 +39,44 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
         run: |
+          echo "Looking for manual PR: ${SOURCE_REPO}:${SOURCE_BRANCH} -> ${TARGET_REPO}:${TARGET_BRANCH}"
+
           PR_JSON=$(gh pr list \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "unblu:master" \
             --state open \
-            --json number,title,body \
-            --limit 1)
+            --json number,title,body,headRefName,headRepositoryOwner,headRepository \
+            --limit 100)
 
-          PR_NUMBER=$(echo "${PR_JSON}" | jq -r '.[0].number // empty')
-          PR_TITLE=$(echo "${PR_JSON}" | jq -r '.[0].title // empty')
-          PR_BODY=$(echo "${PR_JSON}" | jq -r '.[0].body // empty')
+          echo "Open upstream PRs:"
+          echo "${PR_JSON}" | jq .
+
+          PR=$(echo "${PR_JSON}" | jq -c \
+            --arg owner "unblu" \
+            --arg repo "ph-css" \
+            --arg branch "master" \
+            '
+            map(
+              select(
+                .headRefName == $branch and
+                .headRepositoryOwner.login == $owner and
+                .headRepository.name == $repo
+              )
+            )
+            | .[0] // empty
+            ')
+
+          if [ -z "${PR}" ]; then
+            echo "No manual upstream PR found."
+            exit 0
+          fi
+
+          PR_NUMBER=$(echo "${PR}" | jq -r '.number')
+          PR_TITLE=$(echo "${PR}" | jq -r '.title')
+          PR_BODY=$(echo "${PR}" | jq -r '.body')
+
+          echo "Found manual upstream PR #${PR_NUMBER}"
+          echo "Title: ${PR_TITLE}"
 
           echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
@@ -64,14 +91,6 @@ jobs:
             echo "${PR_BODY}"
             echo EOF
           } >> "$GITHUB_OUTPUT"
-
-          if [ -z "${PR_NUMBER}" ]; then
-            echo "No manual upstream PR found."
-            exit 0
-          fi
-
-          echo "Found manual upstream PR #${PR_NUMBER}"
-          echo "Title: ${PR_TITLE}"
 
       # ------------------------------------------------------------
       # 2. Generate GitHub App token for OUR repository

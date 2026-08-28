@@ -68,7 +68,7 @@ jobs:
           PR_JSON=$(gh pr list \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "${SOURCE_REPO}:master" \
+            --head "unblu:master" \
             --state open \
             --json number,title,body \
             --limit 1)
@@ -184,7 +184,7 @@ jobs:
           PR_NUMBER=$(gh pr list \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "${SOURCE_REPO}:${PROMOTION_BRANCH}" \
+            --head "unblu:${PROMOTION_BRANCH}" \
             --state open \
             --json number \
             --jq '.[0].number // empty')
@@ -222,7 +222,7 @@ jobs:
           gh pr create \
             --repo "${TARGET_REPO}" \
             --base "${TARGET_BRANCH}" \
-            --head "${SOURCE_REPO}:${PROMOTION_BRANCH}" \
+            --head "unblu:${PROMOTION_BRANCH}" \
             --title "${PR_TITLE}" \
             --body-file /tmp/pr-body.md
 
